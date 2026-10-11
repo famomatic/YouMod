@@ -450,6 +450,10 @@
 "DISABLE_HINTS_DESC" = "튜토리얼 힌트와 상호작용 팝업을 비활성화합니다.";
 "DISABLE_AUTO_CC_ON_MUTE" = "음소거 시 자동 자막 비활성화";
 "DISABLE_AUTO_CC_ON_MUTE_DESC" = "영상이 음소거되거나 기기 볼륨이 0일 때 유튜브가 자동으로 자막을 켜는 기능을 막습니다.";
+"AVOID_NOTCH_FULLSCREEN" = "전체화면에서 노치 피하기";
+"AVOID_NOTCH_FULLSCREEN_DESC" = "와이드 비율 전체화면 영상에서 노치/다이나믹 아일랜드가 화면을 가리지 않게 합니다.";
+"AVOID_NOTCH_ALL_VIDEOS" = "모든 영상에 적용";
+"AVOID_NOTCH_ALL_VIDEOS_DESC" = "21:9보다 좁은 비율의 영상에도 적용합니다 (기본은 초와이드 영상만).";
 "BLOCK_UPGRADE_DIALOGS" = "업그레이드 대화상자 차단";
 "BLOCK_UPGRADE_DIALOGS_DESC" = "앱 업그레이드를 요청하는 YouTube 대화상자를 차단합니다.";
 "ARE_YOU_THERE_DIALOG" = "'아직 보고 계신가요?' 대화상자 숨기기";

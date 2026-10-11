@@ -450,6 +450,10 @@
 "DISABLE_HINTS_DESC" = "Disable the tutorial hints and interactive pop-ups.";
 "DISABLE_AUTO_CC_ON_MUTE" = "Disable auto-captions on mute";
 "DISABLE_AUTO_CC_ON_MUTE_DESC" = "Stop YouTube from automatically turning captions on when the video is muted or the device volume is zero.";
+"AVOID_NOTCH_FULLSCREEN" = "Avoid notch in fullscreen";
+"AVOID_NOTCH_FULLSCREEN_DESC" = "Keep the notch/Dynamic Island from cutting into wide fullscreen video.";
+"AVOID_NOTCH_ALL_VIDEOS" = "Apply to all videos";
+"AVOID_NOTCH_ALL_VIDEOS_DESC" = "Also apply to videos narrower than ~21:9, not just ultra-wide ones.";
 "BLOCK_UPGRADE_DIALOGS" = "Block upgrade dialogs";
 "BLOCK_UPGRADE_DIALOGS_DESC" = "Block the YouTube dialogs that ask you to upgrade the app.";
 "ARE_YOU_THERE_DIALOG" = "Hide 'Are you there?' dialog";

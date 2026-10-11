@@ -1967,6 +1967,7 @@ static void YouModShowDownloadManager(YTPlayerViewController *player, UIViewCont
 %hook YTPlayerViewController
 
 - (void)viewDidAppear:(BOOL)animated {
+    NotchAvoid_setupForPlayerViewController(self);
     %orig;
     YouModCurrentPlayerViewController = self;
 }

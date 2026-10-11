@@ -241,6 +241,8 @@
 #define DisablesShortsPiP @"YouModTrytoDisablesShortsPiP"
 #define DisableHints @"YouModDisableHints"
 #define DisableAutoCaptionsOnMute @"YouModDisableAutoCaptionsOnMute"
+#define AvoidNotchInFullscreen @"YouModAvoidNotchInFullscreen"
+#define AvoidNotchForAllVideos @"YouModAvoidNotchForAllVideos"
 #define BlockUpgradeDialogs @"YouModBlockUpgradeDialogs"
 #define HideAreYouThereDialog @"YouModHideAreYouThereDialog"
 #define FixesSlowMiniPlayer @"YouModFixesSlowMiniPlayer"
@@ -850,3 +852,6 @@ typedef NS_ENUM(NSInteger, YouModTranslationState) {
                completion:(void (^)(NSURL *audioURL, NSString *err))completion;
 + (void)cancelCurrent;
 @end
+
+extern void NotchAvoid_setupForPlayerViewController(YTPlayerViewController *self);
+extern void NotchAvoid_onDidActivateVideo(YTPlayerViewController *self);

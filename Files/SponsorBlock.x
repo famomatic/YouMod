@@ -357,6 +357,7 @@ UIColor *SBColorFromHex(NSString *hexString) {
 %property (nonatomic, strong) SBSkipNotificationView *sbNotificationView;
 - (void)playbackController:(id)playbackController didActivateVideo:(id)video withPlaybackData:(id)playbackData {
     %orig;
+    NotchAvoid_onDidActivateVideo(self);
     if (!IS_ENABLED(SBEnabled) || self.isPlayingAd) return;
     if ([self.parentViewController isKindOfClass:%c(YTShortsPlayerViewController)]) return;
 
