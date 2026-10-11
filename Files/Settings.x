@@ -297,8 +297,11 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
                 (void)vc;
                 YMPushOverlayButtonOrder(settingsViewController, [self parentResponder]);
             }),
+            YMPicker(YMLOC(@"OVERLAY_BUTTON_CORNER"), YMLOC(@"OVERLAY_BUTTON_CORNER_DESC"), OverlayButtonCorner, (@[YMLOC(@"CORNER_TOP_RIGHT"), YMLOC(@"CORNER_TOP_LEFT"), YMLOC(@"CORNER_BOTTOM_RIGHT"), YMLOC(@"CORNER_BOTTOM_LEFT")]), 0),
+            YMHeader(YMLOC(@"ADVANCED")),
             YMSlider(YMLOC(@"OVERLAY_BUTTON_OFFSET_X"), YMLOC(@"OVERLAY_BUTTON_OFFSET_X_DESC"), OverlayButtonOffsetX, -100, 100, 5, 0),
             YMSlider(YMLOC(@"OVERLAY_BUTTON_OFFSET_Y"), YMLOC(@"OVERLAY_BUTTON_OFFSET_Y_DESC"), OverlayButtonOffsetY, -150, 150, 5, 0),
+            YMHeader(YMLOC(@"INTERFACE")),
             YMToggle(YMLOC(@"HIDE_AUTOPLAY"), YMLOC(@"HIDE_AUTOPLAY_DESC"), HideAutoPlayToggle),
             YMToggle(YMLOC(@"HIDE_FULL_VID_TITLE"), YMLOC(@"HIDE_FULL_VID_TITLE_DESC"), HideFullvidTitle),
             YMToggle(YMLOC(@"HIDE_CAPTIONS_BUTTON"), YMLOC(@"HIDE_CAPTIONS_BUTTON_DESC"), HideCaptionsButton),

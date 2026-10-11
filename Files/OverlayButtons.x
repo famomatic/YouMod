@@ -77,7 +77,8 @@ static const NSInteger YMOverlayButtonBaseTag = 9910;
 static const CGFloat YMOverlayButtonSize = 30.0;
 static const CGFloat YMOverlayButtonGap = 6.0;
 static const CGFloat YMOverlayButtonTopInset = 52.0; // fallback row top when the gear can't be located
-static const CGFloat YMOverlayButtonEdgePadding = 12.0; // fallback right padding when the gear isn't found
+static const CGFloat YMOverlayButtonEdgePadding = 12.0; // fallback left/right padding when the gear isn't found
+static const CGFloat YMOverlayButtonBottomInset = 60.0; // row bottom-padding for the bottom-anchored corners, clears the scrubber/time labels
 
 // Width of a text button. Tweak this to make text buttons wider or narrower; icon
 // buttons stay square at YMOverlayButtonSize.
@@ -364,15 +365,36 @@ static BOOL isRelatedVideosExpanded = NO;
     YTSingleVideo *sgvid2 = sgvid.singleVideo;
     BOOL isLive = [sgvid2 isLivePlayback];
     BOOL overlayVisible = self.isOverlayVisible;
-    CGRect gearFrame = YMGearFrameInOverlay(self);
-    BOOL hasGear = !CGRectIsNull(gearFrame);
-    CGFloat trailingCenterX = hasGear ? CGRectGetMidX(gearFrame) : self.bounds.size.width - YMOverlayButtonEdgePadding - YMOverlayButtonSize / 2.0;
-    CGFloat rowTop = hasGear ? CGRectGetMaxY(gearFrame) : YMOverlayButtonTopInset;
+
+    // YTLite-style corner anchoring: 0=top-right(default) 1=top-left 2=bottom-right 3=bottom-left.
+    // Only the default top-right corner tracks YouTube's own gear button; the other three are
+    // plain edge-anchored since there's no equivalent native landmark in those corners.
+    NSInteger corner = [[NSUserDefaults standardUserDefaults] objectForKey:OverlayButtonCorner] ? (NSInteger)[[NSUserDefaults standardUserDefaults] integerForKey:OverlayButtonCorner] : 0;
+    BOOL anchorRight = (corner == 0 || corner == 2);
+    BOOL anchorBottom = (corner == 2 || corner == 3);
+    // growRightward mirrors the row's growth direction: trailing-right rows grow leftward from
+    // their anchor, leading-left rows grow rightward from theirs.
+    BOOL growRightward = !anchorRight;
+
+    CGFloat anchorCenterX;
+    CGFloat rowTop;
+    if (corner == 0) {
+        CGRect gearFrame = YMGearFrameInOverlay(self);
+        BOOL hasGear = !CGRectIsNull(gearFrame);
+        anchorCenterX = hasGear ? CGRectGetMidX(gearFrame) : self.bounds.size.width - YMOverlayButtonEdgePadding - YMOverlayButtonSize / 2.0;
+        rowTop = hasGear ? CGRectGetMaxY(gearFrame) : YMOverlayButtonTopInset;
+    } else {
+        anchorCenterX = anchorRight ? (self.bounds.size.width - YMOverlayButtonEdgePadding - YMOverlayButtonSize / 2.0)
+                                     : (YMOverlayButtonEdgePadding + YMOverlayButtonSize / 2.0);
+        rowTop = anchorBottom ? (self.bounds.size.height - YMOverlayButtonBottomInset - YMOverlayButtonSize)
+                               : YMOverlayButtonTopInset;
+    }
     // Lets the whole row be nudged left/right/up/down from Settings, since the
-    // gear-anchored default spot isn't always where every layout wants it.
-    trailingCenterX += FLOAT_FOR_KEY(OverlayButtonOffsetX);
+    // corner-anchored default spot isn't always where every layout wants it.
+    anchorCenterX += FLOAT_FOR_KEY(OverlayButtonOffsetX);
     rowTop += FLOAT_FOR_KEY(OverlayButtonOffsetY);
     CGFloat prevHalfWidth = 0;
+    CGFloat growDirection = growRightward ? 1.0 : -1.0;
 
     for (YMOverlayButtonSpec *spec in specs) {
         BOOL isHiddenOnLive = isLive && ([spec.identifier isEqualToString:@"sponsorblock.toggle"] ||
@@ -396,10 +418,10 @@ static BOOL isRelatedVideosExpanded = NO;
         }
 
         CGFloat width = (spec.title.length > 0) ? YMOverlayTextButtonWidth : YMOverlayButtonSize;
-        CGFloat centerX = (prevHalfWidth == 0) ? trailingCenterX : trailingCenterX - prevHalfWidth - YMOverlayButtonGap - width / 2.0;
+        CGFloat centerX = (prevHalfWidth == 0) ? anchorCenterX : anchorCenterX + growDirection * (prevHalfWidth + YMOverlayButtonGap + width / 2.0);
 
         btn.frame = CGRectMake(centerX - width / 2.0, rowTop, width, YMOverlayButtonSize);
-        trailingCenterX = centerX;
+        anchorCenterX = centerX;
         prevHalfWidth = width / 2.0;
         [self bringSubviewToFront:btn];
     }

@@ -159,6 +159,7 @@
 #define ForwardSeconds @"YouModForwardSeconds"
 #define OverlayButtonOffsetX @"YouModOverlayButtonOffsetX"
 #define OverlayButtonOffsetY @"YouModOverlayButtonOffsetY"
+#define OverlayButtonCorner @"YouModOverlayButtonCorner" // 0=top-right(default) 1=top-left 2=bottom-right 3=bottom-left, YTLite-style
 #define ShowSpeedSlider @"YouModShowSpeedSlider"
 #define RemoveDarkOverlay @"YouModRemoveDarkOverlay"
 #define RemoveAmbiant @"YouModRemoveAmbiantColors"

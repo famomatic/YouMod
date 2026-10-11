@@ -167,25 +167,42 @@
 %end
 %end
 
+// The keyboard lives in its own window, which doesn't reliably inherit the
+// app's overrideUserInterfaceStyle, so isDarkMode()'s plain self.traitCollection
+// check can read the system theme instead of YouTube's actual theme. Walk the
+// responder chain to the owning view controller first, like OledKeyboard does.
+static inline BOOL OLEDKeyboardIsDarkMode(UIView *view) {
+    UIResponder *responder = view;
+    while (responder != nil) {
+        if ([responder isKindOfClass:[UIViewController class]]) {
+            return ((UIViewController *)responder).traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
+        }
+        responder = [responder nextResponder];
+    }
+    if (view.window != nil) {
+        return view.window.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
+    }
+    return UITraitCollection.currentTraitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
+}
+
 %group OLEDKeyboard
 %hook UIKeyboard
 - (void)displayLayer:(id)arg1 {
     %orig;
-    self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-        return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-    }];
+    self.backgroundColor = OLEDKeyboardIsDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
 }
 %end
 
 %hook UIPredictionViewController
 - (id)_currentTextSuggestions {
     UIKeyboard *keyboard = [%c(UIKeyboard) activeKeyboard];
-    UIView *mainView = self.view;
-    UIColor *dynamicColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-        return isDarkMode(mainView) ? [UIColor blackColor] : [UIColor clearColor];
-    }];
-    [mainView setBackgroundColor:dynamicColor];
-    keyboard.backgroundColor = dynamicColor;
+    if (OLEDKeyboardIsDarkMode(keyboard)) {
+        [self.view setBackgroundColor:[UIColor blackColor]];
+        keyboard.backgroundColor = [UIColor blackColor];
+    } else {
+        [self.view setBackgroundColor:[UIColor clearColor]];
+        keyboard.backgroundColor = [UIColor clearColor];
+    }
     return %orig;
 }
 %end
@@ -193,9 +210,7 @@
 %hook UIKeyboardDockView
 - (void)layoutSubviews {
     %orig;
-    self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-        return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-    }];
+    self.backgroundColor = OLEDKeyboardIsDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
 }
 %end
 
@@ -204,9 +219,7 @@
 - (void)layoutSubviews {
     %orig;
     if ([self isKindOfClass:NSClassFromString(@"TUIEmojiSearchInputView")] || [self isKindOfClass:NSClassFromString(@"_SFAutoFillInputView")]) {
-        self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-            return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-        }];
+        self.backgroundColor = OLEDKeyboardIsDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
     }
 }
 %end
@@ -214,12 +227,12 @@
 %hook UIKBVisualEffectView
 - (void)layoutSubviews {
     %orig;
-    if (isDarkMode(self)) {
-        self.backgroundEffects = nil;
+    if (OLEDKeyboardIsDarkMode(self)) {
+        if ([self respondsToSelector:@selector(setBackgroundEffects:)]) {
+            @try { self.backgroundEffects = nil; } @catch (NSException *e) {}
+        }
+        self.backgroundColor = [UIColor blackColor];
     }
-    self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-        return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-    }];
 }
 %end
 %end
