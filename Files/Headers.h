@@ -28,6 +28,10 @@
 #import <YouTubeHeader/YTAlertView.h>
 #import <YouTubeHeader/YTVarispeedSwitchController.h>
 #import <YouTubeHeader/YTVarispeedSwitchControllerOption.h>
+#import <YouTubeHeader/MDCSlider.h>
+#import <YouTubeHeader/QTMIcon.h>
+#import <YouTubeHeader/UIView+YouTube.h>
+#import <YouTubeHeader/YTCommonUtils.h>
 #import <YouTubeHeader/YTInlinePlayerBarContainerView.h>
 #import <YouTubeHeader/YTSingleVideoTime.h>
 #import <YouTubeHeader/YTSingleVideoController.h>

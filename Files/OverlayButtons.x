@@ -25,11 +25,6 @@ static void didSelectRate(float rate) {
 @interface YTMainAppControlsOverlayView ()
 - (void)updateQualityButton:(id)arg;
 - (void)updateSpeedButton:(id)arg;
-// Confirmed present (as a selector) in 21.40.5's string pool but not yet in
-// YouTubeHeader's YTMainAppControlsOverlayView.h, hence the manual forward
-// declaration - without this ARC can't resolve the return type and refuses
-// to compile the call at all, even through an `id`-typed receiver.
-- (UIButton *)playPauseButton;
 @end
 
 // YouGetCaption (https://github.com/PoomSmart/YouGetCaption)
@@ -286,55 +281,209 @@ static YTQTMButton *YMCreateOverlayButton(YTMainAppControlsOverlayView *overlay,
     return button;
 }
 
-#pragma mark - Persistent speed slider (ported from uYouEnhanced's YouSpeed)
+#pragma mark - Custom slider-based speed picker (ported from uYouEnhanced's YouSpeed)
+// uYouEnhanced never showed a persistent slider under the transport controls - the
+// speed.video overlay button (registered below) already shows the current rate as
+// text, same as every other overlay button. What YouSpeed actually adds is this:
+// tapping it replaces YouTube's own preset-only speed picker with a popup holding a
+// slider plus minus/plus/preset buttons, gated by ShowSpeedSlider.
 
-static const NSInteger YMSpeedSliderTag = 9909; // just below YMOverlayButtonBaseTag (9910)
-static const CGFloat YMSpeedSliderWidth = 160.0;
-static const CGFloat YMSpeedSliderGapBelowTransport = 6.0;
+static const float YMSpeedMin = 0.25;
 
-// Positions a UISlider directly beneath YouTube's own play/pause button, centered
-// on it, matching uYouEnhanced's "speed slider under play/next/previous" layout.
-// playPauseButton is a plain property on the overlay in every build we checked
-// (confirmed present in 21.40.5's selector list); still guarded with
-// respondsToSelector: in case a future YouTube version moves it elsewhere, in
-// which case the slider just doesn't appear rather than crashing.
-static void YMLayoutSpeedSlider(YTMainAppControlsOverlayView *overlay, YTPlayerViewController *player, BOOL shouldBeVisible) {
-    UISlider *slider = (UISlider *)[overlay viewWithTag:YMSpeedSliderTag];
+@interface YouModSpeedAlertView : YTAlertView
+- (void)ymSetupViews:(YTMainAppVideoPlayerOverlayViewController *)delegate sliderLabel:(NSString *)sliderLabel;
+@end
 
-    if (!IS_ENABLED(ShowSpeedSlider)) {
-        if (slider) slider.hidden = YES;
-        return;
-    }
-    if (![overlay respondsToSelector:@selector(playPauseButton)]) {
-        if (slider) slider.hidden = YES;
-        return;
-    }
+// %new methods are defined further below inside the YTMainAppVideoPlayerOverlayViewController
+// hook, but the alert's button targets call them directly (not via selector/target-action
+// dispatch), so the compiler needs them declared here ahead of that definition.
+@interface YTMainAppVideoPlayerOverlayViewController (YouModSpeed)
+- (void)ymDidChangePlaybackSpeed:(MDCSlider *)s;
+- (void)ymDidPressSpeedMinusButton:(YTQTMButton *)button;
+- (void)ymDidPressSpeedPlusButton:(YTQTMButton *)button;
+- (void)ymDidPressSpeedPresetButton:(YTQTMButton *)button;
+@end
 
-    UIButton *playPause = [overlay playPauseButton];
-    if (!playPause.window) {
-        if (slider) slider.hidden = YES;
-        return;
-    }
-    CGRect playPauseFrame = [playPause convertRect:playPause.bounds toView:overlay];
+%subclass YouModSpeedAlertView : YTAlertView
 
-    if (!slider) {
-        slider = [[UISlider alloc] init];
-        slider.tag = YMSpeedSliderTag;
-        slider.minimumValue = 0.25;
-        slider.maximumValue = 2.0;
-        slider.continuous = YES;
-        slider.exclusiveTouch = YES;
-        [slider addTarget:overlay action:@selector(ymSpeedSliderChanged:) forControlEvents:UIControlEventValueChanged];
-        [overlay addSubview:slider];
-    }
+%new
+- (void)ymSetupViews:(YTMainAppVideoPlayerOverlayViewController *)delegate sliderLabel:(NSString *)sliderLabel {
+    CGSize labelSize = CGSizeMake(50, 20);
+    CGSize adjustButtonSize = CGSizeMake(30, 30);
+    CGSize presetButtonSize = CGSizeMake(50, 30);
+    float sliderMax = IS_ENABLED(ExtraSpeed) ? 10.0 : 2.0;
+    UIColor *textColor = [UIColor labelColor];
+    UIColor *adjustBg = [UIColor colorWithWhite:0.5 alpha:0.2];
 
+    MDCSlider *slider = [%c(MDCSlider) new];
+    slider.statefulAPIEnabled = YES;
+    slider.thumbHollowAtStart = NO;
+    slider.minimumValue = YMSpeedMin;
+    slider.maximumValue = sliderMax;
     slider.value = currentPlaybackRate;
-    slider.hidden = !shouldBeVisible;
-    slider.frame = CGRectMake(CGRectGetMidX(playPauseFrame) - YMSpeedSliderWidth / 2.0,
-                              CGRectGetMaxY(playPauseFrame) + YMSpeedSliderGapBelowTransport,
-                              YMSpeedSliderWidth, 30.0);
-    [overlay bringSubviewToFront:slider];
+    slider.continuous = NO;
+    slider.accessibilityLabel = sliderLabel;
+    slider.tag = 'slid';
+    slider.color = textColor;
+    [slider setThumbColor:textColor forState:UIControlStateNormal];
+    [slider setTrackFillColor:textColor forState:UIControlStateNormal];
+    [slider setTrackBackgroundColor:adjustBg forState:UIControlStateNormal];
+
+    YTLabel *minLabel = [%c(YTLabel) new];
+    minLabel.text = speedLabel(YMSpeedMin);
+    minLabel.textAlignment = NSTextAlignmentLeft;
+    minLabel.textColor = textColor;
+    minLabel.tag = 'minl';
+    [minLabel yt_setSize:labelSize];
+
+    YTLabel *maxLabel = [%c(YTLabel) new];
+    maxLabel.text = speedLabel(sliderMax);
+    maxLabel.textAlignment = NSTextAlignmentRight;
+    maxLabel.textColor = textColor;
+    maxLabel.tag = 'maxl';
+    [maxLabel yt_setSize:labelSize];
+
+    YTLabel *currentValueLabel = [%c(YTLabel) new];
+    currentValueLabel.text = currentSpeedLabel;
+    currentValueLabel.textAlignment = NSTextAlignmentCenter;
+    currentValueLabel.textColor = textColor;
+    currentValueLabel.tag = 'cvl0';
+    [currentValueLabel yt_setSize:labelSize];
+
+    UIImage *minusImage = [[UIImage systemImageNamed:@"minus"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    YTQTMButton *minusButton = [%c(YTQTMButton) buttonWithImage:minusImage accessibilityLabel:@"Decrease playback speed" accessibilityIdentifier:@"playback.speed.minus"];
+    minusButton.flatButtonHasOpaqueBackground = YES;
+    minusButton.enabledBackgroundColor = adjustBg;
+    minusButton.tintColor = textColor;
+    minusButton.sizeWithPaddingAndInsets = YES;
+    minusButton.tag = 'mbtn';
+    [minusButton yt_setSize:adjustButtonSize];
+    [minusButton addTarget:delegate action:@selector(ymDidPressSpeedMinusButton:) forControlEvents:UIControlEventTouchUpInside];
+
+    UIImage *plusImage = [[UIImage systemImageNamed:@"plus"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    YTQTMButton *plusButton = [%c(YTQTMButton) buttonWithImage:plusImage accessibilityLabel:@"Increase playback speed" accessibilityIdentifier:@"playback.speed.plus"];
+    plusButton.flatButtonHasOpaqueBackground = YES;
+    plusButton.enabledBackgroundColor = adjustBg;
+    plusButton.tintColor = textColor;
+    plusButton.sizeWithPaddingAndInsets = YES;
+    plusButton.tag = 'pbtn';
+    [plusButton yt_setSize:adjustButtonSize];
+    [plusButton addTarget:delegate action:@selector(ymDidPressSpeedPlusButton:) forControlEvents:UIControlEventTouchUpInside];
+
+    struct { NSInteger tag; NSString *title; } presetSpeedConfigs[] = {
+        {'s025', @"0.25x"}, {'s050', @"0.5x"}, {'s100', @"1x"}, {'s150', @"1.5x"}, {'s200', @"2x"},
+    };
+    NSUInteger presetCount = sizeof(presetSpeedConfigs) / sizeof(presetSpeedConfigs[0]);
+    NSMutableArray<YTQTMButton *> *presetButtons = [NSMutableArray arrayWithCapacity:presetCount];
+    for (NSUInteger i = 0; i < presetCount; i++) {
+        YTQTMButton *button = [%c(YTQTMButton) textButton];
+        button.flatButtonHasOpaqueBackground = YES;
+        button.enabledBackgroundColor = adjustBg;
+        button.customTitleColor = textColor;
+        button.sizeWithPaddingAndInsets = NO;
+        button.tag = presetSpeedConfigs[i].tag;
+        [button yt_setSize:presetButtonSize];
+        [button setTitle:presetSpeedConfigs[i].title forState:UIControlStateNormal];
+        [button addTarget:delegate action:@selector(ymDidPressSpeedPresetButton:) forControlEvents:UIControlEventTouchUpInside];
+        [presetButtons addObject:button];
+    }
+
+    CGFloat contentWidth = [%c(YTCommonUtils) isIPad] ? 350 : 250;
+    UIView *contentView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, contentWidth, 120)];
+    [contentView addSubview:slider];
+    [contentView addSubview:minLabel];
+    [contentView addSubview:maxLabel];
+    [contentView addSubview:currentValueLabel];
+    [contentView addSubview:minusButton];
+    [contentView addSubview:plusButton];
+    for (YTQTMButton *button in presetButtons) [contentView addSubview:button];
+
+    CGFloat sliderWidth = contentWidth - 80;
+    slider.frame = CGRectMake(0, 0, sliderWidth, adjustButtonSize.height);
+    [slider addTarget:delegate action:@selector(ymDidChangePlaybackSpeed:) forControlEvents:UIControlEventValueChanged];
+
+    [slider alignCenterTopToCenterTopOfView:contentView paddingY:0];
+    [minLabel alignTopLeadingToBottomLeadingOfView:slider paddingX:0 paddingY:10];
+    [maxLabel alignTopTrailingToBottomTrailingOfView:slider paddingX:0 paddingY:10];
+    [currentValueLabel alignCenterTopToCenterBottomOfView:slider paddingY:10];
+    [minusButton alignCenterTrailingToCenterLeadingOfView:slider paddingX:10];
+    [plusButton alignCenterLeadingToCenterTrailingOfView:slider paddingX:10];
+
+    CGFloat padding = (contentWidth - (presetButtonSize.width * presetCount)) / (presetCount - 1);
+    CGFloat buttonY = currentValueLabel.frame.origin.y + currentValueLabel.frame.size.height + 15;
+    for (NSUInteger i = 0; i < presetButtons.count; i++) {
+        [presetButtons[i] yt_setOrigin:CGPointMake(i * (padding + presetButtonSize.width), buttonY)];
+    }
+
+    self.customContentView = contentView;
 }
+
+%end
+
+static YouModSpeedAlertView *ymSpeedAlert = nil;
+
+%hook YTMainAppVideoPlayerOverlayViewController
+
+- (void)didPressVarispeed:(id)arg1 {
+    if (!IS_ENABLED(ShowSpeedSlider)) {
+        %orig;
+        return;
+    }
+    ymSpeedAlert = [%c(YouModSpeedAlertView) infoDialog];
+    [ymSpeedAlert ymSetupViews:self sliderLabel:LOC(@"SPEED_BUTTON")];
+    ymSpeedAlert.title = LOC(@"SPEED_BUTTON");
+    ymSpeedAlert.shouldDismissOnBackgroundTap = YES;
+    ymSpeedAlert.customContentViewInsets = UIEdgeInsetsMake(8, 0, 0, 0);
+    [ymSpeedAlert addTitle:LOC(@"CHOOSE_FROM_ORIGINAL") withCancelAction:^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            %orig;
+        });
+    }];
+    [ymSpeedAlert show];
+}
+
+%new
+- (void)ymDidChangePlaybackSpeed:(MDCSlider *)s {
+    float rate = s.value;
+    [(id<YTVarispeedSwitchControllerDelegate>)self.delegate varispeedSwitchController:nil didSelectRate:rate];
+    YTLabel *currentValueLabel = [s.superview viewWithTag:'cvl0'];
+    currentValueLabel.text = currentSpeedLabel;
+}
+
+%new
+- (void)ymDidPressSpeedMinusButton:(YTQTMButton *)button {
+    MDCSlider *slider = [button.superview viewWithTag:'slid'];
+    float newValue = MAX(slider.minimumValue, slider.value - 0.05);
+    [slider setValue:newValue animated:YES];
+    [self ymDidChangePlaybackSpeed:slider];
+}
+
+%new
+- (void)ymDidPressSpeedPlusButton:(YTQTMButton *)button {
+    MDCSlider *slider = [button.superview viewWithTag:'slid'];
+    float newValue = MIN(slider.maximumValue, slider.value + 0.05);
+    [slider setValue:newValue animated:YES];
+    [self ymDidChangePlaybackSpeed:slider];
+}
+
+%new
+- (void)ymDidPressSpeedPresetButton:(YTQTMButton *)button {
+    MDCSlider *slider = [button.superview viewWithTag:'slid'];
+    float newValue = 1.0;
+    switch (button.tag) {
+        case 's025': newValue = 0.25; break;
+        case 's050': newValue = 0.5; break;
+        case 's100': newValue = 1.0; break;
+        case 's150': newValue = 1.5; break;
+        case 's200': newValue = 2.0; break;
+    }
+    slider.value = newValue;
+    [self ymDidChangePlaybackSpeed:slider];
+    [ymSpeedAlert dismiss];
+    ymSpeedAlert = nil;
+}
+
+%end
 
 #pragma mark - YTMainAppControlsOverlayView Hook
 
@@ -425,8 +574,6 @@ static BOOL isRelatedVideosExpanded = NO;
         prevHalfWidth = width / 2.0;
         [self bringSubviewToFront:btn];
     }
-
-    YMLayoutSpeedSlider(self, player, overlayVisible && !isRelatedVideosExpanded);
 }
 
 - (void)setOverlayVisible:(BOOL)visible {
@@ -435,13 +582,6 @@ static BOOL isRelatedVideosExpanded = NO;
         YTQTMButton *btn = (YTQTMButton *)[self viewWithTag:spec.viewTag];
         if (btn) btn.hidden = !visible || isRelatedVideosExpanded;
     }
-}
-
-%new
-- (void)ymSpeedSliderChanged:(UISlider *)sender {
-    YTPlayerViewController *player = YMPlayerVCFromOverlay(self);
-    [player setPlaybackRate:sender.value];
-    didSelectRate(sender.value);
 }
 
 %new

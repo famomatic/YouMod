@@ -347,8 +347,9 @@
 "HIDE_COMMENTS_PREVIEW_DESC" = "Removes the preview box for the top comment while keeping the full section expandable.";
 "LOCK_SPEED" = "Lock speed";
 "LOCK_SPEED_DESC" = "Locks at adjusted speed by swiping down.";
-"SHOW_SPEED_SLIDER" = "Speed slider under player controls";
-"SHOW_SPEED_SLIDER_DESC" = "Shows a persistent playback speed slider under the play/pause button, like uYouEnhanced.";
+"SHOW_SPEED_SLIDER" = "Slider-style speed picker";
+"SHOW_SPEED_SLIDER_DESC" = "Replaces the speed button's native menu with a slider + minus/plus/preset popup, like uYouEnhanced's YouSpeed.";
+"CHOOSE_FROM_ORIGINAL" = "Use original speed menu";
 "SEEK_ON_OVERLAY" = "Seek on overlay";
 "SEEK_ON_OVERLAY_DESC" = "Allows controlling playback seeking by swiping left and right on the video overlay.";
 "DRC_AUDIO_OPTIONS" = "Auto Stable volume";
