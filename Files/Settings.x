@@ -470,6 +470,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             YMToggle(YMLOC(@"BACKGROUND_PLAYBACK"), YMLOC(@"BACKGROUND_PLAYBACK_DESC"), BackgroundPlayback),
             YMToggle(YMLOC(@"DISABLES_SHORTS_PIP"), YMLOC(@"DISABLES_SHORTS_PIP_DESC"), DisablesShortsPiP),
             YMToggle(YMLOC(@"DISABLE_HINTS"), YMLOC(@"DISABLE_HINTS_DESC"), DisableHints),
+            YMToggle(YMLOC(@"DISABLE_AUTO_CC_ON_MUTE"), YMLOC(@"DISABLE_AUTO_CC_ON_MUTE_DESC"), DisableAutoCaptionsOnMute),
             YMToggle(YMLOC(@"BLOCK_UPGRADE_DIALOGS"), YMLOC(@"BLOCK_UPGRADE_DIALOGS_DESC"), BlockUpgradeDialogs),
             YMToggle(YMLOC(@"ARE_YOU_THERE_DIALOG"), YMLOC(@"ARE_YOU_THERE_DIALOG_DESC"), HideAreYouThereDialog),
             YMToggle(YMLOC(@"FIXES_SLOW_MINIPLAYER"), YMLOC(@"FIXES_SLOW_MINIPLAYER_DESC"), FixesSlowMiniPlayer),

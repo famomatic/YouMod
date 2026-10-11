@@ -448,6 +448,8 @@
 "DISABLES_SHORTS_PIP_DESC" = "Shorts의 PiP(화면 속 화면)를 비활성화하려고 시도합니다. 100% 비활성화되지 않을 수 있습니다.";
 "DISABLE_HINTS" = "힌트 비활성화";
 "DISABLE_HINTS_DESC" = "튜토리얼 힌트와 상호작용 팝업을 비활성화합니다.";
+"DISABLE_AUTO_CC_ON_MUTE" = "음소거 시 자동 자막 비활성화";
+"DISABLE_AUTO_CC_ON_MUTE_DESC" = "영상이 음소거되거나 기기 볼륨이 0일 때 유튜브가 자동으로 자막을 켜는 기능을 막습니다.";
 "BLOCK_UPGRADE_DIALOGS" = "업그레이드 대화상자 차단";
 "BLOCK_UPGRADE_DIALOGS_DESC" = "앱 업그레이드를 요청하는 YouTube 대화상자를 차단합니다.";
 "ARE_YOU_THERE_DIALOG" = "'아직 보고 계신가요?' 대화상자 숨기기";

@@ -212,3 +212,11 @@
 %hook YTEngagementPanelHeaderView
 - (void)setSubheader:(UIView *)view { if (!IS_ENABLED(HideEngagementSubbar)) %orig; }
 %end
+
+// Disables YouTube's own "turn captions on when muted/volume is zero" feature
+// (YTAutoCaptionsOnMuteController, new as of ~21.40.x). Class/selector names
+// confirmed against the 21.40.5 string pool; not yet confirmed on-device.
+%hook YTAutoCaptionsOnMuteController
+- (BOOL)isAutoCaptionsOnMuteOn { return IS_ENABLED(DisableAutoCaptionsOnMute) ? NO : %orig; }
+- (BOOL)shouldEnableAutoCaptionsOnMuteFeature { return IS_ENABLED(DisableAutoCaptionsOnMute) ? NO : %orig; }
+%end

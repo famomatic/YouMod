@@ -240,6 +240,7 @@
 #define BackgroundPlayback @"YouModEnablesBackgroundPlayback"
 #define DisablesShortsPiP @"YouModTrytoDisablesShortsPiP"
 #define DisableHints @"YouModDisableHints"
+#define DisableAutoCaptionsOnMute @"YouModDisableAutoCaptionsOnMute"
 #define BlockUpgradeDialogs @"YouModBlockUpgradeDialogs"
 #define HideAreYouThereDialog @"YouModHideAreYouThereDialog"
 #define FixesSlowMiniPlayer @"YouModFixesSlowMiniPlayer"

@@ -448,6 +448,8 @@
 "DISABLES_SHORTS_PIP_DESC" = "Try to disables Shorts PiP, this might not 100% disables it.";
 "DISABLE_HINTS" = "Disable hints";
 "DISABLE_HINTS_DESC" = "Disable the tutorial hints and interactive pop-ups.";
+"DISABLE_AUTO_CC_ON_MUTE" = "Disable auto-captions on mute";
+"DISABLE_AUTO_CC_ON_MUTE_DESC" = "Stop YouTube from automatically turning captions on when the video is muted or the device volume is zero.";
 "BLOCK_UPGRADE_DIALOGS" = "Block upgrade dialogs";
 "BLOCK_UPGRADE_DIALOGS_DESC" = "Block the YouTube dialogs that ask you to upgrade the app.";
 "ARE_YOU_THERE_DIALOG" = "Hide 'Are you there?' dialog";
