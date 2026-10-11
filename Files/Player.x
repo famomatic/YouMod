@@ -988,7 +988,10 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
                 float speedDelta = (-adjustedTranslation / self.view.bounds.size.height) * speedSensitivity;
                 float rawSpeed = initialSpeed + speedDelta;
                 float clampedSpeed = fmaxf(fminf(rawSpeed, 10.0), 0.25);
-                float steppedSpeed = roundf(clampedSpeed * 4.0) / 4.0;
+                // 0.05 steps (ported from uYouEnhanced's YouSpeed +/- slider buttons)
+                // instead of the old 0.25 rounding, so the swipe gesture can reach any
+                // fine-grained speed, not just quarter-steps.
+                float steppedSpeed = roundf(clampedSpeed * 20.0) / 20.0;
 
                 static float lastUpdatedSpeed = 0;
                 if (steppedSpeed != lastUpdatedSpeed) {
