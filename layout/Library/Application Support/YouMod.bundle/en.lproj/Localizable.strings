@@ -225,6 +225,10 @@
 "SPONSORBLOCK_BUTTON" = "SponsorBlock";
 "MANAGE_OVERLAY_BUTTONS" = "Manage overlay buttons";
 "MANAGE_OVERLAY_BUTTONS_DESC" = "Reorder and toggle overlay buttons";
+"OVERLAY_BUTTON_OFFSET_X" = "Overlay buttons: horizontal offset";
+"OVERLAY_BUTTON_OFFSET_X_DESC" = "Nudge the overlay button row left (negative) or right (positive).";
+"OVERLAY_BUTTON_OFFSET_Y" = "Overlay buttons: vertical offset";
+"OVERLAY_BUTTON_OFFSET_Y_DESC" = "Nudge the overlay button row up (negative) or down (positive).";
 "OVERLAY_BUTTON_REORDER_HINT" = "Drag to reorder overlay buttons. Toggle to show/hide.";
 "HOLD_TO_SPEED" = "Hold to speed";
 "HOLD_TO_SPEED_DESC" = "Uses custom hold to speed playback rate.";
@@ -336,6 +340,8 @@
 "HIDE_COMMENTS_PREVIEW_DESC" = "Removes the preview box for the top comment while keeping the full section expandable.";
 "LOCK_SPEED" = "Lock speed";
 "LOCK_SPEED_DESC" = "Locks at adjusted speed by swiping down.";
+"SHOW_SPEED_SLIDER" = "Speed slider under player controls";
+"SHOW_SPEED_SLIDER_DESC" = "Shows a persistent playback speed slider under the play/pause button, like uYouEnhanced.";
 "SEEK_ON_OVERLAY" = "Seek on overlay";
 "SEEK_ON_OVERLAY_DESC" = "Allows controlling playback seeking by swiping left and right on the video overlay.";
 "DRC_AUDIO_OPTIONS" = "Auto Stable volume";

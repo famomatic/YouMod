@@ -239,6 +239,8 @@ static BOOL isGestureRegistered = NO;
     %orig;
     if (IS_ENABLED(HideTabLabels)) {
         [self.navigationButton setTitle:@"" forState:UIControlStateNormal];
+        self.navigationButton.titleLabel.text = @"";
+        self.navigationButton.titleLabel.hidden = YES;
         [self.navigationButton setSizeWithPaddingAndInsets:NO];
     }
     // Attach long-press gesture once per view; the action handler checks the
@@ -250,6 +252,18 @@ static BOOL isGestureRegistered = NO;
         [self addInteraction:interaction];
         objc_setAssociatedObject(self, kYMContextMenuKey, interaction, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         isGestureRegistered = YES;
+    }
+}
+// setRenderer: clearing the title doesn't always stick - something re-derives
+// the button's title from the renderer model on a later layout pass, which is
+// why the label was reappearing crammed next to the icon instead of in its
+// normal (now-collapsed) spot below it. Re-assert on every layout too.
+- (void)layoutSubviews {
+    %orig;
+    if (IS_ENABLED(HideTabLabels) && self.navigationButton.titleLabel.text.length > 0) {
+        [self.navigationButton setTitle:@"" forState:UIControlStateNormal];
+        self.navigationButton.titleLabel.text = @"";
+        self.navigationButton.titleLabel.hidden = YES;
     }
 }
 %new

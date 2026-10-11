@@ -83,6 +83,31 @@
         if (IS_ENABLED(HideVoiceSearch) && [subview.accessibilityLabel isEqualToString:NSLocalizedString(@"search.voice.access", nil)]) subview.hidden = YES;
         if (IS_ENABLED(HideCastButtonNav) && [subview.accessibilityIdentifier isEqualToString:@"id.mdx.playbackroute.button"]) subview.hidden = YES;
     }
+    // Gonerino (github.com/castdrian/Gonerino, often bundled alongside YouMod by
+    // the ipa.yml workflow) adds its own button here via a hardcoded
+    // CGRectMake(0,0,40,40) frame rather than this view's real button-placement
+    // mechanism (buttonForType:/setButton:forType:), so it lands at the
+    // container's origin and overlaps whatever else sits there - usually search.
+    // Since %orig has already positioned every button we DO understand (search,
+    // voice search, cast, notifications) by this point, push Gonerino's button
+    // to sit just left of the leftmost real button we can find instead of
+    // trusting its own frame.
+    UIView *gonerinoButton = nil;
+    CGFloat leftmostVisibleX = CGFLOAT_MAX;
+    for (UIView *subview in self.subviews) {
+        if ([subview.accessibilityLabel isEqualToString:@"Gonerino"]) {
+            gonerinoButton = subview;
+            continue;
+        }
+        if (subview.hidden) continue;
+        leftmostVisibleX = MIN(leftmostVisibleX, CGRectGetMinX(subview.frame));
+    }
+    if (gonerinoButton && leftmostVisibleX != CGFLOAT_MAX) {
+        CGRect frame = gonerinoButton.frame;
+        frame.origin.x = leftmostVisibleX - frame.size.width;
+        frame.origin.y = (self.bounds.size.height - frame.size.height) / 2.0;
+        gonerinoButton.frame = frame;
+    }
 }
 %end
 

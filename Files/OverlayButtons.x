@@ -25,6 +25,11 @@ static void didSelectRate(float rate) {
 @interface YTMainAppControlsOverlayView ()
 - (void)updateQualityButton:(id)arg;
 - (void)updateSpeedButton:(id)arg;
+// Confirmed present (as a selector) in 21.40.5's string pool but not yet in
+// YouTubeHeader's YTMainAppControlsOverlayView.h, hence the manual forward
+// declaration - without this ARC can't resolve the return type and refuses
+// to compile the call at all, even through an `id`-typed receiver.
+- (UIButton *)playPauseButton;
 @end
 
 // YouGetCaption (https://github.com/PoomSmart/YouGetCaption)
@@ -280,6 +285,56 @@ static YTQTMButton *YMCreateOverlayButton(YTMainAppControlsOverlayView *overlay,
     return button;
 }
 
+#pragma mark - Persistent speed slider (ported from uYouEnhanced's YouSpeed)
+
+static const NSInteger YMSpeedSliderTag = 9909; // just below YMOverlayButtonBaseTag (9910)
+static const CGFloat YMSpeedSliderWidth = 160.0;
+static const CGFloat YMSpeedSliderGapBelowTransport = 6.0;
+
+// Positions a UISlider directly beneath YouTube's own play/pause button, centered
+// on it, matching uYouEnhanced's "speed slider under play/next/previous" layout.
+// playPauseButton is a plain property on the overlay in every build we checked
+// (confirmed present in 21.40.5's selector list); still guarded with
+// respondsToSelector: in case a future YouTube version moves it elsewhere, in
+// which case the slider just doesn't appear rather than crashing.
+static void YMLayoutSpeedSlider(YTMainAppControlsOverlayView *overlay, YTPlayerViewController *player, BOOL shouldBeVisible) {
+    UISlider *slider = (UISlider *)[overlay viewWithTag:YMSpeedSliderTag];
+
+    if (!IS_ENABLED(ShowSpeedSlider)) {
+        if (slider) slider.hidden = YES;
+        return;
+    }
+    if (![overlay respondsToSelector:@selector(playPauseButton)]) {
+        if (slider) slider.hidden = YES;
+        return;
+    }
+
+    UIButton *playPause = [overlay playPauseButton];
+    if (!playPause.window) {
+        if (slider) slider.hidden = YES;
+        return;
+    }
+    CGRect playPauseFrame = [playPause convertRect:playPause.bounds toView:overlay];
+
+    if (!slider) {
+        slider = [[UISlider alloc] init];
+        slider.tag = YMSpeedSliderTag;
+        slider.minimumValue = 0.25;
+        slider.maximumValue = 2.0;
+        slider.continuous = YES;
+        slider.exclusiveTouch = YES;
+        [slider addTarget:overlay action:@selector(ymSpeedSliderChanged:) forControlEvents:UIControlEventValueChanged];
+        [overlay addSubview:slider];
+    }
+
+    slider.value = currentPlaybackRate;
+    slider.hidden = !shouldBeVisible;
+    slider.frame = CGRectMake(CGRectGetMidX(playPauseFrame) - YMSpeedSliderWidth / 2.0,
+                              CGRectGetMaxY(playPauseFrame) + YMSpeedSliderGapBelowTransport,
+                              YMSpeedSliderWidth, 30.0);
+    [overlay bringSubviewToFront:slider];
+}
+
 #pragma mark - YTMainAppControlsOverlayView Hook
 
 static BOOL isRelatedVideosExpanded = NO;
@@ -313,6 +368,10 @@ static BOOL isRelatedVideosExpanded = NO;
     BOOL hasGear = !CGRectIsNull(gearFrame);
     CGFloat trailingCenterX = hasGear ? CGRectGetMidX(gearFrame) : self.bounds.size.width - YMOverlayButtonEdgePadding - YMOverlayButtonSize / 2.0;
     CGFloat rowTop = hasGear ? CGRectGetMaxY(gearFrame) : YMOverlayButtonTopInset;
+    // Lets the whole row be nudged left/right/up/down from Settings, since the
+    // gear-anchored default spot isn't always where every layout wants it.
+    trailingCenterX += FLOAT_FOR_KEY(OverlayButtonOffsetX);
+    rowTop += FLOAT_FOR_KEY(OverlayButtonOffsetY);
     CGFloat prevHalfWidth = 0;
 
     for (YMOverlayButtonSpec *spec in specs) {
@@ -344,6 +403,8 @@ static BOOL isRelatedVideosExpanded = NO;
         prevHalfWidth = width / 2.0;
         [self bringSubviewToFront:btn];
     }
+
+    YMLayoutSpeedSlider(self, player, overlayVisible && !isRelatedVideosExpanded);
 }
 
 - (void)setOverlayVisible:(BOOL)visible {
@@ -352,6 +413,13 @@ static BOOL isRelatedVideosExpanded = NO;
         YTQTMButton *btn = (YTQTMButton *)[self viewWithTag:spec.viewTag];
         if (btn) btn.hidden = !visible || isRelatedVideosExpanded;
     }
+}
+
+%new
+- (void)ymSpeedSliderChanged:(UISlider *)sender {
+    YTPlayerViewController *player = YMPlayerVCFromOverlay(self);
+    [player setPlaybackRate:sender.value];
+    didSelectRate(sender.value);
 }
 
 %new

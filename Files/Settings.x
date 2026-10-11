@@ -291,11 +291,14 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             YMHeader(@""),
             YMPicker(YMLOC(@"HOLD_TO_SPEED"), YMLOC(@"HOLD_TO_SPEED_DESC"), HoldToSpeedIndex, (@[YMLOC(@"DEFAULT"), @"0.25x", @"0.5x", @"0.75x", @"1x", @"1.25x", @"1.5x", @"1.75x", @"2x", @"3x", @"4x", @"5x"]), 0),
             [YMToggle(YMLOC(@"LOCK_SPEED"), YMLOC(@"LOCK_SPEED_DESC"), LockSpeed) visibleWhenKey:HoldToSpeedIndex isGreaterThan:0],
+            YMToggle(YMLOC(@"SHOW_SPEED_SLIDER"), YMLOC(@"SHOW_SPEED_SLIDER_DESC"), ShowSpeedSlider),
             YMHeader(YMLOC(@"INTERFACE")),
             YMAction(YMLOC(@"MANAGE_OVERLAY_BUTTONS"), YMLOC(@"MANAGE_OVERLAY_BUTTONS_DESC"), ^(UIViewController *vc) {
                 (void)vc;
                 YMPushOverlayButtonOrder(settingsViewController, [self parentResponder]);
             }),
+            YMSlider(YMLOC(@"OVERLAY_BUTTON_OFFSET_X"), YMLOC(@"OVERLAY_BUTTON_OFFSET_X_DESC"), OverlayButtonOffsetX, -100, 100, 5, 0),
+            YMSlider(YMLOC(@"OVERLAY_BUTTON_OFFSET_Y"), YMLOC(@"OVERLAY_BUTTON_OFFSET_Y_DESC"), OverlayButtonOffsetY, -150, 150, 5, 0),
             YMToggle(YMLOC(@"HIDE_AUTOPLAY"), YMLOC(@"HIDE_AUTOPLAY_DESC"), HideAutoPlayToggle),
             YMToggle(YMLOC(@"HIDE_FULL_VID_TITLE"), YMLOC(@"HIDE_FULL_VID_TITLE_DESC"), HideFullvidTitle),
             YMToggle(YMLOC(@"HIDE_CAPTIONS_BUTTON"), YMLOC(@"HIDE_CAPTIONS_BUTTON_DESC"), HideCaptionsButton),
