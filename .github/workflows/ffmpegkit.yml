@@ -43,10 +43,36 @@ jobs:
       - name: Install Nix
         uses: cachix/install-nix-action@v31
 
+      # The xcode26 Nix profile lacks a few tools some external libraries need
+      # (libsndfile runs GNU autogen). Its shell keeps the outer PATH, so tools in
+      # the user profile are visible inside it.
+      - name: Install extra build tools
+        run: |
+          nix profile install nixpkgs#autogen nixpkgs#ragel nixpkgs#texinfo nixpkgs#groff nixpkgs#gtk-doc \
+            || nix profile add nixpkgs#autogen nixpkgs#ragel nixpkgs#texinfo nixpkgs#groff nixpkgs#gtk-doc
+          command -v autogen
+
+      # Already-built libraries are reused, so a retry after a failure only redoes
+      # what is left. Saved even when the build fails.
+      - name: Restore FFmpegKit build cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/ffmpeg-kit-next
+          key: ffmpegkit-${{ inputs.tag || 'v9.0.0' }}-${{ hashFiles('tools/build-ffmpegkit.sh') }}-${{ github.run_id }}
+          restore-keys: |
+            ffmpegkit-${{ inputs.tag || 'v9.0.0' }}-${{ hashFiles('tools/build-ffmpegkit.sh') }}-
+
       - name: Build FFmpegKit
         env:
           FFMPEGKIT_TAG: ${{ inputs.tag || 'v9.0.0' }}
         run: bash tools/build-ffmpegkit.sh
+
+      - name: Save FFmpegKit build cache
+        if: ${{ always() }}
+        uses: actions/cache/save@v6
+        with:
+          path: .cache/ffmpeg-kit-next
+          key: ffmpegkit-${{ inputs.tag || 'v9.0.0' }}-${{ hashFiles('tools/build-ffmpegkit.sh') }}-${{ github.run_id }}
 
       - name: Package frameworks
         run: |
