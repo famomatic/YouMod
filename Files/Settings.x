@@ -655,6 +655,8 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
         YTLogoIndex: @1,
         BackgroundPlayback: @YES,
         RadioMode: @YES,
+        GestureControls: @YES, // keeps the default edge-zone activation area, so the
+                                // center strip stays free for the fullscreen-exit gesture
         DownloadManager: @YES,
         SBButtonKey: @YES,
         DisableHints: @YES,
