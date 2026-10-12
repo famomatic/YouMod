@@ -630,3 +630,23 @@
 "AUDIO_FORMAT_OPUS_DESC" = "가능하면 원본 Opus";
 "AUDIO_FORMAT_FLAC_DESC" = "무손실 컨테이너";
 "AUDIO_FORMAT_WAV_DESC" = "비압축 PCM";
+
+// Downloads
+"DOWNLOAD_ADVANCED" = "고급";
+"DEFAULT_QUALITY" = "기본 화질";
+"DEFAULT_QUALITY_DESC" = "화질·오디오 메뉴 없이 이 화질(없으면 가장 가까운 낮은 화질)로 바로 다운로드합니다.";
+"BEST_QUALITY" = "최고 화질";
+"AUTO" = "자동";
+"PREFERRED_CODEC" = "선호 영상 코덱";
+"FILENAME_TEMPLATE" = "파일 이름";
+"FILENAME_TEMPLATE_DESC" = "다운로드한 파일의 이름 규칙입니다.";
+"FILENAME_TITLE" = "제목";
+"FILENAME_CHANNEL_TITLE" = "채널 - 제목";
+"FILENAME_TITLE_ID" = "제목 [영상 ID]";
+"FILENAME_TITLE_QUALITY" = "제목 (화질)";
+"EMBED_METADATA" = "메타데이터·커버 넣기";
+"EMBED_METADATA_DESC" = "다운로드한 파일에 제목, 채널, 영상 링크, 썸네일을 넣습니다(FFmpeg 필요).";
+"QUEUED" = "대기 중";
+"ADDED_TO_QUEUE" = "다운로드 대기열에 추가됨 (%lu개 대기)";
+"SAVED_TO_DOWNLOADS" = "다운로드에 저장됨";
+"EMBEDDING_METADATA" = "메타데이터 추가 중...";

@@ -1,5 +1,6 @@
 #import "Headers.h"
 #import "FFmpegKit.h"
+#import "DownloadLibrary.h"
 #import <AVFoundation/AVFoundation.h>
 #import <Photos/Photos.h>
 #import <math.h>
@@ -762,6 +763,16 @@ static YouModMediaFormat *YouModMediaFormatFromStream(YTIFormatStream *stream, B
     return format;
 }
 
+// Lower is better: the preferred codec first (Auto = H.264, the most compatible).
+static NSInteger YouModCodecRank(YouModMediaFormat *format) {
+    NSInteger preference = INTFORVAL(DownloadPreferredCodec);
+    NSArray *order = preference == 1 ? @[@"VP9", @"AV1", @"H.264"]
+                   : preference == 2 ? @[@"AV1", @"VP9", @"H.264"]
+                   : @[@"H.264", @"VP9", @"AV1"];
+    NSUInteger index = [order indexOfObject:YouModCodecName(format.mimeType) ?: @""];
+    return index == NSNotFound ? (NSInteger)order.count : (NSInteger)index;
+}
+
 static NSArray <YouModMediaFormat *> *YouModFormatsForPlayer(YTPlayerViewController *player, BOOL video) {
     NSMutableArray *formats = [NSMutableArray array];
     for (YTIFormatStream *stream in YouModAdaptiveFormatObjectsForPlayer(player)) {
@@ -777,6 +788,9 @@ static NSArray <YouModMediaFormat *> *YouModFormatsForPlayer(YTPlayerViewControl
             NSInteger leftFPS = left.fps;
             NSInteger rightFPS = right.fps;
             if (leftFPS != rightFPS) return leftFPS > rightFPS ? NSOrderedAscending : NSOrderedDescending;
+            NSInteger leftRank = YouModCodecRank(left);
+            NSInteger rightRank = YouModCodecRank(right);
+            if (leftRank != rightRank) return leftRank < rightRank ? NSOrderedAscending : NSOrderedDescending;
         }
         
         BOOL leftMP4 = YouModFormatLooksMP4Family(left);
@@ -1009,6 +1023,54 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
     }
 }
 
+#pragma mark - Download queue
+
+// Downloads run one at a time through the coordinator; everything requested while
+// one is running waits here instead of being rejected. The coordinator reports
+// progress/completion/failure back so the queue can record finished files in the
+// library, run the post-download action and start the next job.
+
+NSString *const YMDownloadQueueDidChangeNotification = @"YMDownloadQueueDidChangeNotification";
+
+typedef NS_ENUM(NSInteger, YMDownloadJobState) {
+    YMDownloadJobStateQueued,
+    YMDownloadJobStateRunning,
+    YMDownloadJobStateFailed,
+};
+
+@interface YMDownloadJob : NSObject
+@property (nonatomic, copy) NSString *identifier;
+@property (nonatomic, copy) NSString *videoID;
+@property (nonatomic, copy) NSString *title;
+@property (nonatomic, copy) NSString *author;
+@property (nonatomic, copy) NSString *fileName;
+@property (nonatomic, copy) NSString *formatSummary;
+@property (nonatomic, strong) NSURL *thumbnailURL;
+@property (nonatomic, strong) YouModMediaFormat *videoFormat; // nil for audio-only
+@property (nonatomic, strong) YouModMediaFormat *audioFormat;
+@property (nonatomic, assign) NSInteger audioOutput;
+@property (nonatomic, assign) unsigned long long durationMs;
+@property (nonatomic, weak) UIViewController *presenter;
+@property (nonatomic, assign) YMDownloadJobState state;
+@property (nonatomic, assign) float progress;
+@property (nonatomic, copy) NSString *status;
+@property (nonatomic, copy) NSString *errorMessage;
+@property (nonatomic, readonly) BOOL isVideo;
+@end
+
+@interface YMDownloadQueue : NSObject
++ (instancetype)sharedQueue;
+@property (nonatomic, readonly) NSArray<YMDownloadJob *> *jobs; // running, queued and failed
+- (void)enqueue:(YMDownloadJob *)job;
+- (void)cancelJob:(YMDownloadJob *)job;
+- (void)retryJob:(YMDownloadJob *)job;
+- (void)removeJob:(YMDownloadJob *)job;
+- (void)coordinatorReportedProgress:(float)progress status:(NSString *)status;
+- (void)coordinatorFinishedWithFileURL:(NSURL *)fileURL isVideo:(BOOL)isVideo presenter:(UIViewController *)presenter;
+- (void)coordinatorFailedWithMessage:(NSString *)message;
+- (void)coordinatorCancelled;
+@end
+
 static NSString *YouModAudioOutputExtension(NSInteger output) {
     switch (output) {
         case 2: return @"mp3";
@@ -1064,6 +1126,7 @@ static NSString *YouModAudioOutputExtension(NSInteger output) {
 - (void)updateProgressTitle:(NSString *)title progress:(float)progress {
     NSString *displayTitle = [NSString stringWithFormat:@"%@ - %ld%%", title, (long)lrintf(progress * 100.0f)];
     [self.progressPill updateProgress:progress title:displayTitle subtitle:nil];
+    [[YMDownloadQueue sharedQueue] coordinatorReportedProgress:progress status:title];
 }
 
 // SABR progress with a speed + size subtitle. When the total is known (the formats'
@@ -1088,6 +1151,7 @@ static NSString *YouModAudioOutputExtension(NSInteger output) {
 
     NSString *displayTitle = [NSString stringWithFormat:@"%@ - %ld%%", title, (long)lrintf(progress * 100.0f)];
     [self.progressPill updateProgress:progress title:displayTitle subtitle:subtitle];
+    [[YMDownloadQueue sharedQueue] coordinatorReportedProgress:progress status:[NSString stringWithFormat:@"%@ · %@", title, subtitle]];
 }
 
 - (void)cancelWithMessage:(NSString *)message {
@@ -1117,6 +1181,12 @@ static NSString *YouModAudioOutputExtension(NSInteger output) {
     if (self.progressPill) { [self.progressPill dismiss]; self.progressPill = nil; }
     [self cleanupTemporaryFiles];
     if (message.length) YouModSendError(message);
+    // Also used for server-side errors, which should show up as a failed job.
+    if (message.length == 0 || [message isEqualToString:LOC(@"DOWNLOAD_CANCELLED")]) {
+        [[YMDownloadQueue sharedQueue] coordinatorCancelled];
+    } else {
+        [[YMDownloadQueue sharedQueue] coordinatorFailedWithMessage:message];
+    }
 }
 
 - (void)cleanupTemporaryFiles {
@@ -1235,6 +1305,7 @@ static NSString *YouModAudioOutputExtension(NSInteger output) {
         subtitle = [NSString stringWithFormat:@"%.1f MB/s", speedMBps];
     }
     [self.progressPill updateProgress:progress title:title subtitle:subtitle];
+    [[YMDownloadQueue sharedQueue] coordinatorReportedProgress:progress status:[NSString stringWithFormat:@"%@ · %@", self.baseProgressTitle ?: @"", subtitle]];
 }
 
 - (void)adjustCurrentExpectedBytesIfNeeded:(unsigned long long)newExpectedBytes {
@@ -1724,7 +1795,7 @@ static NSString *YouModAudioOutputExtension(NSInteger output) {
     [self updateProgressTitle:LOC(@"DOWNLOAD_COMPLETED") progress:1.0f];
     if (self.progressPill) { [self.progressPill dismiss]; self.progressPill = nil; }
 
-    YouModHandlePostDownloadFile(fileURL, isVideo, presenter);
+    [[YMDownloadQueue sharedQueue] coordinatorFinishedWithFileURL:fileURL isVideo:isVideo presenter:presenter];
 }
 
 - (void)failWithError:(NSError *)error {
@@ -1733,6 +1804,7 @@ static NSString *YouModAudioOutputExtension(NSInteger output) {
     if (self.progressPill) { [self.progressPill dismiss]; self.progressPill = nil; }
     [self cleanupTemporaryFiles];
     YouModSendError(error.localizedDescription ?: LOC(@"DOWNLOAD_FAILED"));
+    [[YMDownloadQueue sharedQueue] coordinatorFailedWithMessage:error.localizedDescription];
 }
 
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didWriteData:(int64_t)bytesWritten totalBytesWritten:(int64_t)totalBytesWritten totalBytesExpectedToWrite:(int64_t)totalBytesExpectedToWrite {
@@ -1901,6 +1973,274 @@ static NSString *YouModAudioOutputExtension(NSInteger output) {
 
 @end
 
+#pragma mark - Download queue implementation
+
+@implementation YMDownloadJob
+- (BOOL)isVideo { return self.videoFormat != nil; }
+@end
+
+@interface YMDownloadQueue ()
+@property (nonatomic, strong) NSMutableArray<YMDownloadJob *> *mutableJobs;
+@property (nonatomic, strong) YMDownloadJob *currentJob;
+@property (nonatomic, assign) UIBackgroundTaskIdentifier backgroundTask;
+@property (nonatomic, assign) NSTimeInterval lastProgressNotification;
+@end
+
+@implementation YMDownloadQueue
+
++ (instancetype)sharedQueue {
+    static YMDownloadQueue *queue;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        queue = [YMDownloadQueue new];
+        queue.mutableJobs = [NSMutableArray array];
+        queue.backgroundTask = UIBackgroundTaskInvalid;
+    });
+    return queue;
+}
+
+- (NSArray<YMDownloadJob *> *)jobs { return self.mutableJobs.copy; }
+
+- (void)notifyChange {
+    [NSNotificationCenter.defaultCenter postNotificationName:YMDownloadQueueDidChangeNotification object:self];
+}
+
+- (NSUInteger)queuedCount {
+    NSUInteger count = 0;
+    for (YMDownloadJob *job in self.mutableJobs) if (job.state == YMDownloadJobStateQueued) count++;
+    return count;
+}
+
+- (void)enqueue:(YMDownloadJob *)job {
+    job.identifier = NSUUID.UUID.UUIDString;
+    job.state = YMDownloadJobStateQueued;
+    job.status = LOC(@"QUEUED");
+    [self.mutableJobs addObject:job];
+    [self notifyChange];
+    if (self.currentJob || [YouModDownloadCoordinator sharedCoordinator].active) {
+        YouModSendToast([NSString stringWithFormat:LOC(@"ADDED_TO_QUEUE"), (unsigned long)[self queuedCount]]);
+        return;
+    }
+    [self startNext];
+}
+
+- (void)startNext {
+    if (self.currentJob || [YouModDownloadCoordinator sharedCoordinator].active) return;
+    YMDownloadJob *next = nil;
+    for (YMDownloadJob *job in self.mutableJobs) {
+        if (job.state == YMDownloadJobStateQueued) { next = job; break; }
+    }
+    if (!next) {
+        [self endBackgroundTask];
+        return;
+    }
+    [self beginBackgroundTask];
+    self.currentJob = next;
+    next.state = YMDownloadJobStateRunning;
+    next.progress = 0;
+    next.errorMessage = nil;
+    [self notifyChange];
+
+    YouModDownloadCoordinator *coordinator = [YouModDownloadCoordinator sharedCoordinator];
+    UIViewController *presenter = next.presenter ?: YouModTopViewController(nil);
+    if (next.isVideo) {
+        [coordinator startDirectVideoDownloadWithVideoFormat:next.videoFormat audioFormat:next.audioFormat fileName:next.fileName presenter:presenter videoID:next.videoID];
+    } else {
+        coordinator.pendingAudioOutput = next.audioOutput;
+        [coordinator startDirectAudioDownloadWithAudioFormat:next.audioFormat fileName:next.fileName presenter:presenter videoID:next.videoID];
+    }
+    // The start methods bail out before going active when a stream URL is missing
+    // (they show their own error); don't leave the queue waiting on that job.
+    if (!coordinator.active && self.currentJob == next) {
+        [self finishCurrentJobWithError:LOC(@"DOWNLOAD_FAILED")];
+    }
+}
+
+- (void)finishCurrentJobWithError:(NSString *)message {
+    YMDownloadJob *job = self.currentJob;
+    self.currentJob = nil;
+    if (job) {
+        job.state = YMDownloadJobStateFailed;
+        job.errorMessage = message;
+        job.status = message;
+    }
+    [self notifyChange];
+    dispatch_async(dispatch_get_main_queue(), ^{ [self startNext]; });
+}
+
+- (void)cancelJob:(YMDownloadJob *)job {
+    if (job == self.currentJob) {
+        [[YouModDownloadCoordinator sharedCoordinator] cancelWithMessage:LOC(@"DOWNLOAD_CANCELLED")];
+        return;
+    }
+    [self.mutableJobs removeObject:job];
+    [self notifyChange];
+}
+
+- (void)retryJob:(YMDownloadJob *)job {
+    if (job.state != YMDownloadJobStateFailed) return;
+    job.state = YMDownloadJobStateQueued;
+    job.status = LOC(@"QUEUED");
+    job.errorMessage = nil;
+    [self notifyChange];
+    [self startNext];
+}
+
+- (void)removeJob:(YMDownloadJob *)job {
+    if (job == self.currentJob) return;
+    [self.mutableJobs removeObject:job];
+    [self notifyChange];
+}
+
+- (void)coordinatorReportedProgress:(float)progress status:(NSString *)status {
+    YMDownloadJob *job = self.currentJob;
+    if (!job) return;
+    job.progress = progress;
+    job.status = status;
+    NSTimeInterval now = NSDate.timeIntervalSinceReferenceDate;
+    if (now - self.lastProgressNotification < 0.25 && progress < 1.0f) return;
+    self.lastProgressNotification = now;
+    [self notifyChange];
+}
+
+- (void)coordinatorFinishedWithFileURL:(NSURL *)fileURL isVideo:(BOOL)isVideo presenter:(UIViewController *)presenter {
+    YMDownloadJob *job = self.currentJob;
+    void (^finish)(NSURL *) = ^(NSURL *finalURL) {
+        [[YMDownloadLibrary sharedLibrary] addFileURL:finalURL videoID:job.videoID title:job.title author:job.author formatSummary:job.formatSummary isVideo:isVideo durationMs:job.durationMs thumbnailURL:job.thumbnailURL];
+        if (job) [self.mutableJobs removeObject:job];
+        self.currentJob = nil;
+        [self notifyChange];
+        // While more downloads are waiting, don't stop the batch with a share
+        // sheet each time - the files are in the Downloads tab.
+        if ([self queuedCount] > 0 && YouModGetPostDownloadAction() != PostDownloadActionSaveToPhotos) {
+            YouModSendSuccess(LOC(@"SAVED_TO_DOWNLOADS"));
+        } else {
+            YouModHandlePostDownloadFile(finalURL, isVideo, presenter);
+        }
+        [self startNext];
+    };
+    if (job && IS_ENABLED(DownloadEmbedMetadata) && YouModFFmpegFormatsEnabled()) {
+        [self embedMetadataForJob:job fileURL:fileURL completion:finish];
+    } else {
+        finish(fileURL);
+    }
+}
+
+- (void)coordinatorFailedWithMessage:(NSString *)message {
+    if (!self.currentJob) return;
+    [self finishCurrentJobWithError:message ?: LOC(@"DOWNLOAD_FAILED")];
+}
+
+- (void)coordinatorCancelled {
+    YMDownloadJob *job = self.currentJob;
+    if (!job) return;
+    self.currentJob = nil;
+    [self.mutableJobs removeObject:job];
+    [self notifyChange];
+    dispatch_async(dispatch_get_main_queue(), ^{ [self startNext]; });
+}
+
+// Title/channel/link tags plus the thumbnail as cover art, remuxed in place with
+// FFmpeg (no re-encode). Any failure keeps the original file.
+- (void)embedMetadataForJob:(YMDownloadJob *)job fileURL:(NSURL *)fileURL completion:(void (^)(NSURL *finalURL))completion {
+    NSString *extension = fileURL.pathExtension.lowercaseString;
+    BOOL coverSupported = [@[@"mp4", @"m4a", @"mp3", @"flac", @"mkv"] containsObject:extension];
+    [[YouModDownloadCoordinator sharedCoordinator] updateProgressTitle:LOC(@"EMBEDDING_METADATA") progress:1.0f];
+
+    void (^run)(NSURL *) = ^(NSURL *coverURL) {
+        NSURL *outputURL = [[fileURL URLByDeletingPathExtension] URLByAppendingPathExtension:[@"tagged." stringByAppendingString:extension]];
+        NSMutableArray *args = [@[@"-y", @"-i", fileURL.path] mutableCopy];
+        if (coverURL && ![extension isEqualToString:@"mkv"]) [args addObjectsFromArray:@[@"-i", coverURL.path]];
+        if (coverURL && [extension isEqualToString:@"mkv"]) {
+            [args addObjectsFromArray:@[@"-map", @"0", @"-c", @"copy", @"-attach", coverURL.path, @"-metadata:s:t", @"mimetype=image/jpeg", @"-metadata:s:t", @"filename=cover.jpg"]];
+        } else if (coverURL) {
+            BOOL hasVideo = [extension isEqualToString:@"mp4"];
+            [args addObjectsFromArray:@[@"-map", hasVideo ? @"0" : @"0:a", @"-map", @"1", @"-c", @"copy",
+                                        [NSString stringWithFormat:@"-disposition:v:%d", hasVideo ? 1 : 0], @"attached_pic"]];
+            if ([extension isEqualToString:@"mp3"]) [args addObjectsFromArray:@[@"-id3v2_version", @"3"]];
+        } else {
+            [args addObjectsFromArray:@[@"-map", @"0", @"-c", @"copy"]];
+        }
+        if (job.title.length) [args addObjectsFromArray:@[@"-metadata", [@"title=" stringByAppendingString:job.title]]];
+        if (job.author.length) [args addObjectsFromArray:@[@"-metadata", [@"artist=" stringByAppendingString:job.author]]];
+        if (job.videoID.length) [args addObjectsFromArray:@[@"-metadata", [@"comment=https://youtu.be/" stringByAppendingString:job.videoID]]];
+        [args addObject:outputURL.path];
+
+        YMFFmpegRun(args, 0, nil, ^(BOOL success, BOOL cancelled, NSString *errorMessage) {
+            if (coverURL) [NSFileManager.defaultManager removeItemAtURL:coverURL error:nil];
+            if (success && [NSFileManager.defaultManager replaceItemAtURL:fileURL withItemAtURL:outputURL backupItemName:nil options:0 resultingItemURL:nil error:nil]) {
+                completion(fileURL);
+            } else {
+                [NSFileManager.defaultManager removeItemAtURL:outputURL error:nil];
+                completion(fileURL);
+            }
+        });
+    };
+
+    if (!coverSupported || !job.thumbnailURL) {
+        run(nil);
+        return;
+    }
+    [[NSURLSession.sharedSession dataTaskWithURL:job.thumbnailURL completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        // Re-encode to JPEG: YouTube may serve WebP, which most players won't show as cover art.
+        UIImage *image = data.length ? [UIImage imageWithData:data] : nil;
+        NSData *jpeg = image ? UIImageJPEGRepresentation(image, 0.9) : nil;
+        NSURL *coverURL = jpeg ? YouModTemporaryFileURL(@"jpg") : nil;
+        if (coverURL && ![jpeg writeToURL:coverURL atomically:YES]) coverURL = nil;
+        dispatch_async(dispatch_get_main_queue(), ^{ run(coverURL); });
+    }] resume];
+}
+
+- (void)beginBackgroundTask {
+    if (self.backgroundTask != UIBackgroundTaskInvalid) return;
+    __weak typeof(self) weakSelf = self;
+    self.backgroundTask = [UIApplication.sharedApplication beginBackgroundTaskWithName:@"YouModDownloads" expirationHandler:^{
+        [weakSelf endBackgroundTask];
+    }];
+}
+
+- (void)endBackgroundTask {
+    if (self.backgroundTask == UIBackgroundTaskInvalid) return;
+    [UIApplication.sharedApplication endBackgroundTask:self.backgroundTask];
+    self.backgroundTask = UIBackgroundTaskInvalid;
+}
+
+@end
+
+static NSString *YouModFileNameFromTemplate(NSString *title, NSString *author, NSString *videoID, NSString *quality) {
+    NSString *name = title.length ? title : @"YouTube Video";
+    switch (INTFORVAL(DownloadFileNameTemplate)) {
+        case 1: if (author.length) name = [NSString stringWithFormat:@"%@ - %@", author, name]; break;
+        case 2: if (videoID.length) name = [NSString stringWithFormat:@"%@ [%@]", name, videoID]; break;
+        case 3: if (quality.length) name = [NSString stringWithFormat:@"%@ (%@)", name, quality]; break;
+        default: break;
+    }
+    return name;
+}
+
+// Queues a download for the current video. `videoFormat` nil means audio-only.
+static void YouModEnqueueDownload(YTPlayerViewController *player, YouModMediaFormat *videoFormat, YouModMediaFormat *audioFormat, NSInteger audioOutput, UIViewController *presenter) {
+    YMDownloadJob *job = [YMDownloadJob new];
+    job.videoID = player.currentVideoID;
+    job.title = YouModTitleForPlayer(player);
+    job.author = YouModAuthorForPlayer(player);
+    job.thumbnailURL = YouModThumbnailURL(player);
+    job.videoFormat = videoFormat;
+    job.audioFormat = audioFormat;
+    job.audioOutput = audioOutput > 0 ? audioOutput : 1;
+    job.durationMs = videoFormat.durationMs ?: audioFormat.durationMs;
+    job.presenter = presenter;
+    NSString *audioCodec = YouModCodecName(audioFormat.mimeType) ?: @"";
+    if (videoFormat) {
+        job.formatSummary = [NSString stringWithFormat:@"%@ · %@ · %@", videoFormat.qualityLabel ?: @"", YouModCodecName(videoFormat.mimeType) ?: @"", audioCodec];
+    } else {
+        job.formatSummary = [NSString stringWithFormat:@"%@ · %@", YouModAudioOutputExtension(job.audioOutput).uppercaseString, audioCodec];
+    }
+    job.fileName = YouModFileNameFromTemplate(job.title, job.author, job.videoID, videoFormat.qualityLabel);
+    [[YMDownloadQueue sharedQueue] enqueue:job];
+}
+
+
 static void YouModShowThumbnailViewer(YTPlayerViewController *player, UIViewController *presenter) {
     NSURL *thumbnailURL = YouModThumbnailURL(player);
     if (!thumbnailURL) {
@@ -2002,11 +2342,9 @@ static void YouModShowCopyVideoInfoSheet(YTPlayerViewController *player, UIViewC
 
 // Audio-only downloads: resolve the output format (the setting, or ask) and start.
 // Without FFmpeg the only possible output is the original M4A.
-static void YouModStartAudioDownload(YouModMediaFormat *format, NSString *fileName, UIViewController *presenter, UIView *sender, NSString *videoID) {
-    YouModDownloadCoordinator *coordinator = [YouModDownloadCoordinator sharedCoordinator];
+static void YouModStartAudioDownload(YTPlayerViewController *player, YouModMediaFormat *format, UIViewController *presenter, UIView *sender) {
     void (^start)(NSInteger) = ^(NSInteger output) {
-        if (!coordinator.active) coordinator.pendingAudioOutput = output;
-        [coordinator startAudioDownloadWithAudioFormat:format fileName:fileName presenter:presenter videoID:videoID];
+        YouModEnqueueDownload(player, nil, format, output, presenter);
     };
     if (!YouModFFmpegFormatsEnabled()) {
         start(1);
@@ -2028,6 +2366,40 @@ static void YouModStartAudioDownload(YouModMediaFormat *format, NSString *fileNa
     YouModPresentMenu(nil, items, presenter, sender);
 }
 
+// "Default quality" setting: the best format at or below the chosen height (formats
+// are already sorted by height, fps and preferred codec). nil = ask.
+static YouModMediaFormat *YouModAutoVideoFormat(NSArray<YouModMediaFormat *> *formats) {
+    NSInteger setting = INTFORVAL(DownloadDefaultQuality);
+    static const NSInteger caps[] = {0, NSIntegerMax, 2160, 1440, 1080, 720, 480, 360};
+    if (setting <= 0 || setting > 7 || formats.count == 0) return nil;
+    for (YouModMediaFormat *format in formats) {
+        if (format.resolution <= caps[setting]) return format;
+    }
+    return formats.lastObject;
+}
+
+// Audio to pair with `videoFormat` (nil for audio-only): AAC next to H.264 keeps the
+// fast AVFoundation merge; otherwise Opus, YouTube's best audio. The original-language
+// track wins on multi-language videos.
+static YouModMediaFormat *YouModAutoAudioFormat(NSArray<YouModMediaFormat *> *formats, YouModMediaFormat *videoFormat, NSInteger audioOutput) {
+    if (formats.count == 0) return nil;
+    BOOL wantAAC = videoFormat ? [YouModCodecName(videoFormat.mimeType) isEqualToString:@"H.264"] : audioOutput <= 1;
+    NSString *wantedCodec = wantAAC ? @"AAC" : @"Opus";
+    BOOL multiLanguage = NO;
+    for (YouModMediaFormat *format in formats) if (format.idp.length) { multiLanguage = YES; break; }
+
+    YouModMediaFormat *best = nil;
+    NSInteger bestScore = NSIntegerMin;
+    for (YouModMediaFormat *format in formats) {
+        NSInteger score = 0;
+        if (multiLanguage && [format.idp hasSuffix:@".4"]) score += 100;
+        if ([YouModCodecName(format.mimeType) isEqualToString:wantedCodec]) score += 10;
+        score += MIN(format.bitrate / 100000, 9);
+        if (score > bestScore) { bestScore = score; best = format; }
+    }
+    return best;
+}
+
 static void YouModShowAudioTrackSelectionSheet(YTPlayerViewController *player, UIViewController *presenter, UIView *sender, NSString *fileName, BOOL downloadVideo, YouModMediaFormat *videoFormat) {
     NSArray <YouModMediaFormat *> *audioFormats = YouModFormatsForPlayer(player, NO);
     if (audioFormats.count == 0) {
@@ -2038,11 +2410,11 @@ static void YouModShowAudioTrackSelectionSheet(YTPlayerViewController *player, U
     // Skip the audio-track chooser for a single format, or the server path (which
     // can't fetch a chosen track). Direct and on-device SABR both honor the choice.
     if (audioFormats.count == 1 || INTFORVAL(DownloadMethod) == DownloadMethodServer || INTFORVAL(DownloadMethod) == DownloadMethodOnDevice) {
-        YouModMediaFormat *selectedFormat = audioFormats.firstObject;
+        YouModMediaFormat *selectedFormat = YouModAutoAudioFormat(audioFormats, downloadVideo ? videoFormat : nil, INTFORVAL(AudioOutputFormat));
         if (downloadVideo) {
-            [[YouModDownloadCoordinator sharedCoordinator] startVideoDownloadWithVideoFormat:videoFormat audioFormat:selectedFormat fileName:fileName presenter:presenter videoID:player.currentVideoID];
+            YouModEnqueueDownload(player, videoFormat, selectedFormat, 0, presenter);
         } else {
-            YouModStartAudioDownload(selectedFormat, fileName, presenter, sender, player.currentVideoID);
+            YouModStartAudioDownload(player, selectedFormat, presenter, sender);
         }
         return;
     }
@@ -2053,9 +2425,9 @@ static void YouModShowAudioTrackSelectionSheet(YTPlayerViewController *player, U
         NSString *subtitle = YouModFormatSubtitle(format, NO);
         [items addObject:[YouModMenuItem itemWithTitle:rowTitle subtitle:subtitle icon:YouModYTIconImage(906, NO, nil) handler:^{
             if (downloadVideo) {
-                [[YouModDownloadCoordinator sharedCoordinator] startVideoDownloadWithVideoFormat:videoFormat audioFormat:format fileName:fileName presenter:presenter videoID:player.currentVideoID];
+                YouModEnqueueDownload(player, videoFormat, format, 0, presenter);
             } else {
-                YouModStartAudioDownload(format, fileName, presenter, sender, player.currentVideoID);
+                YouModStartAudioDownload(player, format, presenter, sender);
             }
         }]];
     }
@@ -2070,6 +2442,15 @@ static void YouModShowVideoQualitySheet(YTPlayerViewController *player, UIViewCo
     if (videoFormats.count == 0) {
         YouModSendError(LOC(@"NO_VID_AUDIO_STREAM_FOUND"));
         return;
+    }
+
+    YouModMediaFormat *autoVideo = YouModAutoVideoFormat(videoFormats);
+    if (autoVideo) {
+        YouModMediaFormat *autoAudio = YouModAutoAudioFormat(YouModFormatsForPlayer(player, NO), autoVideo, 0);
+        if (autoAudio) {
+            YouModEnqueueDownload(player, autoVideo, autoAudio, 0, presenter);
+            return;
+        }
     }
 
     NSMutableArray *items = [NSMutableArray array];

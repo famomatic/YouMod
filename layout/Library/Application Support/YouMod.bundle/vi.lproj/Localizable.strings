@@ -597,3 +597,23 @@
 "AUDIO_FORMAT_OPUS_DESC" = "Original Opus when available";
 "AUDIO_FORMAT_FLAC_DESC" = "Lossless container";
 "AUDIO_FORMAT_WAV_DESC" = "Uncompressed PCM";
+
+// Downloads
+"DOWNLOAD_ADVANCED" = "Advanced";
+"DEFAULT_QUALITY" = "Default quality";
+"DEFAULT_QUALITY_DESC" = "Download straight away at this quality (or the closest lower one) instead of showing the quality and audio menus.";
+"BEST_QUALITY" = "Best available";
+"AUTO" = "Auto";
+"PREFERRED_CODEC" = "Preferred video codec";
+"FILENAME_TEMPLATE" = "File name";
+"FILENAME_TEMPLATE_DESC" = "How downloaded files are named.";
+"FILENAME_TITLE" = "Title";
+"FILENAME_CHANNEL_TITLE" = "Channel - Title";
+"FILENAME_TITLE_ID" = "Title [Video ID]";
+"FILENAME_TITLE_QUALITY" = "Title (Quality)";
+"EMBED_METADATA" = "Embed metadata and cover";
+"EMBED_METADATA_DESC" = "Write the title, channel, video link and thumbnail into downloaded files (needs FFmpeg).";
+"QUEUED" = "Waiting";
+"ADDED_TO_QUEUE" = "Added to downloads queue (%lu waiting)";
+"SAVED_TO_DOWNLOADS" = "Saved to Downloads";
+"EMBEDDING_METADATA" = "Adding metadata...";

@@ -90,6 +90,10 @@
 #define FFmpegVideoContainer @"YouModFFmpegVideoContainer" // 0 = MP4, 1 = MKV for non-H.264 merges
 #define FFmpegPhotosCompatible @"YouModFFmpegPhotosCompatible" // re-encode VP9/AV1/Opus to H.264/HEVC + AAC
 #define AudioOutputFormat @"YouModAudioOutputFormat"       // 0 = ask, 1 = M4A, 2 = MP3, 3 = Opus, 4 = FLAC, 5 = WAV
+#define DownloadDefaultQuality @"YouModDownloadDefaultQuality"     // 0 = ask, 1 = best, 2 = 2160p ... 7 = 360p
+#define DownloadPreferredCodec @"YouModDownloadPreferredCodec"     // 0 = auto (H.264 first), 1 = VP9, 2 = AV1
+#define DownloadFileNameTemplate @"YouModDownloadFileNameTemplate" // 0 = title, 1 = channel - title, 2 = title [id], 3 = title (quality)
+#define DownloadEmbedMetadata @"YouModDownloadEmbedMetadata"       // tag title/channel/link + cover art via FFmpeg
 #define DownloadMethod @"YouModDownloadMethod" // index into the "Download method" picker
 #define DownloadMethodDirect 0   // YouTube's built-in stream URLs
 #define DownloadMethodServer 1   // external server (triggerSilentDownload…)
