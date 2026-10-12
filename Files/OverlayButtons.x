@@ -1,5 +1,7 @@
 #import "Headers.h"
 
+extern BOOL YouModRadioModeActive(void);
+
 static NSString *YouModUpdateSpeedLabel = @"YouModUpdateSpeedLabel";
 static NSString *currentSpeedLabel = @"1x";
 static float currentPlaybackRate = 1.0;
@@ -661,7 +663,7 @@ static BOOL isRelatedVideosExpanded = NO;
         }
         if (!btn) btn = YMCreateOverlayButton(self, spec);
 
-        btn.hidden = !overlayVisible || isRelatedVideosExpanded;
+        btn.hidden = !overlayVisible || isRelatedVideosExpanded || YouModRadioModeActive();
 
         if (spec.tintProvider) {
             UIColor *dynamic = spec.tintProvider(player);
@@ -678,14 +680,14 @@ static BOOL isRelatedVideosExpanded = NO;
         [self bringSubviewToFront:btn];
     }
 
-    YMLayoutSpeedStepper(self, overlayVisible && !isRelatedVideosExpanded);
+    YMLayoutSpeedStepper(self, overlayVisible && !isRelatedVideosExpanded && !YouModRadioModeActive());
 }
 
 - (void)setOverlayVisible:(BOOL)visible {
     %orig;
     for (YMOverlayButtonSpec *spec in YMRegisteredOverlayButtons()) {
         YTQTMButton *btn = (YTQTMButton *)[self viewWithTag:spec.viewTag];
-        if (btn) btn.hidden = !visible || isRelatedVideosExpanded;
+        if (btn) btn.hidden = !visible || isRelatedVideosExpanded || YouModRadioModeActive();
     }
 }
 

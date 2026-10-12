@@ -25,6 +25,12 @@ extern NSString *YouModAuthorForPlayer(YTPlayerViewController *player);
 
 static BOOL gYMRadioModeActive = NO;
 
+// So OverlayButtons.x can hide its own overlay buttons/stepper while Radio Mode
+// covers the video - they'd otherwise float uselessly on top of the cover.
+BOOL YouModRadioModeActive(void) {
+    return gYMRadioModeActive;
+}
+
 static NSInteger const YMRadioEntryButtonTag = 9920;
 static NSInteger const YMRadioCoverTag = 9921;
 static NSInteger const YMRadioTitleTag = 9923;
