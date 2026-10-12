@@ -2012,19 +2012,20 @@ NSString *YouModGlobalAuthHeader = nil;
 }
 %end
 
+// Called for every _ASDisplayView attached to a window, so the cheap identifier
+// check goes first, before the defaults read and the associated-object lookup.
 void YouModConfigureDownloadButton(_ASDisplayView *view) {
+    if (![view.accessibilityIdentifier isEqualToString:@"id.ui.add_to.offline.button"]) return;
     if (!IS_ENABLED(DownloadManager)) return;
     if (objc_getAssociatedObject(view, @selector(YouModDownloadButtonTapped:))) return;
 
-    if ([view.accessibilityIdentifier isEqualToString:@"id.ui.add_to.offline.button"]) {
-        view.userInteractionEnabled = YES;
-        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:view action:@selector(YouModDownloadButtonTapped:)];
-        tap.cancelsTouchesInView = YES;
-        tap.delaysTouchesBegan = YES;
-        tap.delaysTouchesEnded = YES;
-        [view addGestureRecognizer:tap];
-        objc_setAssociatedObject(view, @selector(YouModDownloadButtonTapped:), @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
+    view.userInteractionEnabled = YES;
+    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:view action:@selector(YouModDownloadButtonTapped:)];
+    tap.cancelsTouchesInView = YES;
+    tap.delaysTouchesBegan = YES;
+    tap.delaysTouchesEnded = YES;
+    [view addGestureRecognizer:tap];
+    objc_setAssociatedObject(view, @selector(YouModDownloadButtonTapped:), @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 static void YouModShowTranslationDialog(NSString *text, UIViewController *presenter) {
@@ -2148,7 +2149,9 @@ static UIImage *YouModExtractPostImage(UIView *cellView) {
 
 - (void)didMoveToWindow {
     %orig;
-    if ([self.accessibilityIdentifier isEqualToString:@"id.ui.comment_cell"] && IS_ENABLED(DownloadComment)) {
+    NSString *iden = self.accessibilityIdentifier;
+    if (iden.length == 0) return;
+    if ([iden isEqualToString:@"id.ui.comment_cell"] && IS_ENABLED(DownloadComment)) {
         BOOL hasGesture = NO;
         for (UIGestureRecognizer *g in self.gestureRecognizers) {
             if ([g.name isEqualToString:@"YouModCommentLongPress"]) {
@@ -2163,7 +2166,7 @@ static UIImage *YouModExtractPostImage(UIView *cellView) {
             longPress.minimumPressDuration = 0.3;
             [self addGestureRecognizer:longPress];
         }
-    } else if ([self.accessibilityIdentifier isEqualToString:@"id.ui.backstage.original_post"] && IS_ENABLED(DownloadPost)) {
+    } else if ([iden isEqualToString:@"id.ui.backstage.original_post"] && IS_ENABLED(DownloadPost)) {
         BOOL hasGesture = NO;
         for (UIGestureRecognizer *g in self.gestureRecognizers) {
             if ([g.name isEqualToString:@"YouModPostLongPress"]) {
@@ -2334,6 +2337,7 @@ static UIImage *YouModExtractPostImage(UIView *cellView) {
 %end
 
 %ctor {
+    YMRegisterDefaults();
     %init;
     YMOverlayButtonSpec *download = [[YMOverlayButtonSpec alloc] init];
     download.identifier = @"download.video";

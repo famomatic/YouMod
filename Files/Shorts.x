@@ -122,56 +122,61 @@ static BOOL isFullscreenEnabled = NO;
 
 extern void YouModConfigureDownloadButton(_ASDisplayView *view);
 
+// These run for every identified _ASDisplayView in the app. They used to build a
+// dictionary and read every setting on each call; now the identifier is matched
+// first against a static map and only the one relevant setting is read.
 static void YouModFilterShortsButtons(_ASDisplayView *self, NSString *iden) {
-    NSDictionary *buttonsList = @{
-        @"id.reel_like_button": @(IS_ENABLED(RemoveShortsLikeButton)),
-        @"id.reel_like_toggled_button": @(IS_ENABLED(RemoveShortsLikeButton)),
-        @"id.reel_comment_button": @(IS_ENABLED(RemoveShortsCommentButton)),
-        @"id.reel_share_button": @(IS_ENABLED(RemoveShortsShareButton)),
-        @"id.reel_remix_button" : @(IS_ENABLED(RemoveShortsRemixButton)),
-        @"id.reel_pivot_button": @(IS_ENABLED(RemoveShortsSoundMetadataButton))
-    };
-    for (NSString *button in buttonsList) {
-        if ([iden isEqualToString:button] && [buttonsList[button] boolValue]) {
-            _ASDisplayView *mainView = (_ASDisplayView *)self.superview;
-            ASDisplayNode *node = mainView.keepalive_node;
-            for (_ASDisplayView *view in node.yogaChildren) {
-                if ([[view description] containsString:button]) {
-                    [node removeYogaChild:view];
-                    [self removeFromSuperview];
-                    break;
-                }
-            }
+    static NSDictionary<NSString *, NSString *> *buttonKeys;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        buttonKeys = @{
+            @"id.reel_like_button": RemoveShortsLikeButton,
+            @"id.reel_like_toggled_button": RemoveShortsLikeButton,
+            @"id.reel_comment_button": RemoveShortsCommentButton,
+            @"id.reel_share_button": RemoveShortsShareButton,
+            @"id.reel_remix_button": RemoveShortsRemixButton,
+            @"id.reel_pivot_button": RemoveShortsSoundMetadataButton
+        };
+    });
+    NSString *key = buttonKeys[iden];
+    if (!key || !IS_ENABLED(key)) return;
+    _ASDisplayView *mainView = (_ASDisplayView *)self.superview;
+    ASDisplayNode *node = mainView.keepalive_node;
+    for (_ASDisplayView *view in node.yogaChildren) {
+        if ([[view description] containsString:iden]) {
+            [node removeYogaChild:view];
+            [self removeFromSuperview];
             break;
         }
     }
 }
 
 static void YouModFilterShortsPausedHeader(_ASDisplayView *self, NSString *iden) {
-    NSDictionary *buttonsList = @{
-        @"id.ui.shorts_paused_state.subscriptions_button": @(IS_ENABLED(RemoveShortsPausedSubButton)),
-        @"id.ui.shorts_paused_state.live_button": @(IS_ENABLED(RemoveShortsPausedLiveButton)),
-        @"id.ui.shorts_paused_state.lens_button": @(IS_ENABLED(RemoveShortsPausedLensButton)),
-        @"id.ui.shorts_paused_state.trends_button" : @(IS_ENABLED(RemoveShortsPausedTrendsButton))
-    };
-    for (NSString *button in buttonsList) {
-        if ([iden isEqualToString:button] && [buttonsList[button] boolValue]) {
-            ASScrollView *mainView = (ASScrollView *)self.superview;
-            ASDisplayNode *node = mainView.scrollNode;
-            for (_ASDisplayView *view in node.yogaChildren) {
-                if ([[view description] containsString:button]) {
-                    [node removeYogaChild:view];
-                    [self removeFromSuperview];
-                    break;
-                }
-            }
+    static NSDictionary<NSString *, NSString *> *buttonKeys;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        buttonKeys = @{
+            @"id.ui.shorts_paused_state.subscriptions_button": RemoveShortsPausedSubButton,
+            @"id.ui.shorts_paused_state.live_button": RemoveShortsPausedLiveButton,
+            @"id.ui.shorts_paused_state.lens_button": RemoveShortsPausedLensButton,
+            @"id.ui.shorts_paused_state.trends_button": RemoveShortsPausedTrendsButton
+        };
+    });
+    NSString *key = buttonKeys[iden];
+    if (!key || !IS_ENABLED(key)) return;
+    ASScrollView *mainView = (ASScrollView *)self.superview;
+    ASDisplayNode *node = mainView.scrollNode;
+    for (_ASDisplayView *view in node.yogaChildren) {
+        if ([[view description] containsString:iden]) {
+            [node removeYogaChild:view];
+            [self removeFromSuperview];
             break;
         }
     }
 }
 
 static void YouModFilterShortsDisclosure(_ASDisplayView *self, NSString *iden) {
-    if (![self.accessibilityIdentifier isEqualToString:@"eml.shorts-disclosures"] || !IS_ENABLED(RemoveShortsDisclosure)) return;
+    if (![iden isEqualToString:@"eml.shorts-disclosures"] || !IS_ENABLED(RemoveShortsDisclosure)) return;
     _ASDisplayView *dpView = (_ASDisplayView *)self.superview;
     ASDisplayNode *node = dpView.keepalive_node;
     _ASDisplayView *maindpView = (_ASDisplayView *)dpView.superview;
@@ -184,15 +189,11 @@ static void YouModFilterShortsDisclosure(_ASDisplayView *self, NSString *iden) {
 %hook _ASDisplayView
 - (void)didMoveToWindow {
     %orig;
-    YouModConfigureDownloadButton(self);
     NSString *iden = self.accessibilityIdentifier;
     if (!iden || iden.length == 0) return;
-    NSDictionary *elements = @{
-        @"product_sticker.main_target": @(IS_ENABLED(HideShortsProducts)),
-        @"product_sticker.secondary_target": @(IS_ENABLED(HideShortsProducts)),
-        @"id.elements.components.suggested_action": @(IS_ENABLED(HideShortsRecbar))
-    };
-    if ([elements[iden] boolValue]) {
+    YouModConfigureDownloadButton(self);
+    if ((([iden isEqualToString:@"product_sticker.main_target"] || [iden isEqualToString:@"product_sticker.secondary_target"]) && IS_ENABLED(HideShortsProducts))
+        || ([iden isEqualToString:@"id.elements.components.suggested_action"] && IS_ENABLED(HideShortsRecbar))) {
         [self removeFromSuperview];
         return;
     }

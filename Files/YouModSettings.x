@@ -2263,6 +2263,7 @@ static void ymRegisterStyledSubclass(Class sourceClass, const char *name) {
 %end
 
 %ctor {
+    YMRegisterDefaults();
     ymRegisterStyledSubclass([YMSubSettingsViewController class], "YMSubSettingsViewControllerStyled");
     ymRegisterStyledSubclass([YMTabOrderViewController class], "YMTabOrderViewControllerStyled");
     ymRegisterStyledSubclass([YMOverlayButtonOrderViewController class], "YMOverlayButtonOrderViewControllerStyled");

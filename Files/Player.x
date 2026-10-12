@@ -616,10 +616,8 @@ static void YouModAddEndTime(YTPlayerViewController *self, YTSingleVideoControll
 
 %end
 
-%hook YTVarispeedSwitchController
-
-- (id)init {
-    self = %orig;
+static void YMApplyExtraVarispeedOptions(id controller) {
+    if (!controller) return;
     float speeds[] = {0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 5.0, 7.5, 10.0};
     id options[itemCount];
     Class YTVarispeedSwitchControllerOptionClass = %c(YTVarispeedSwitchControllerOption);
@@ -627,10 +625,24 @@ static void YouModAddEndTime(YTPlayerViewController *self, YTSingleVideoControll
         NSString *title = [NSString stringWithFormat:@"%.2fx", speeds[i]];
         options[i] = [[YTVarispeedSwitchControllerOptionClass alloc] initWithTitle:title rate:speeds[i]];
     }
-    [self setValue:[NSArray arrayWithObjects:options count:itemCount] forKey:@"_options"];
-    return self;
+    [controller setValue:[NSArray arrayWithObjects:options count:itemCount] forKey:@"_options"];
 }
 
+%hook YTVarispeedSwitchController
+- (id)init {
+    self = %orig;
+    YMApplyExtraVarispeedOptions(self);
+    return self;
+}
+%end
+
+// Current YouTube (21.40.5) only has the Impl class; the hook above is for older builds.
+%hook YTVarispeedSwitchControllerImpl
+- (id)init {
+    self = %orig;
+    YMApplyExtraVarispeedOptions(self);
+    return self;
+}
 %end
 
 %hook YTIPlayerHotConfig
@@ -1701,6 +1713,7 @@ static void YouModFilterVideoButtons(_ASDisplayView *view, NSString *iden) {
 %end
 
 %ctor {
+    YMRegisterDefaults();
     %init;
     YouModConfigureRemoteSkipCommands();
     if (IS_ENABLED(OldQualityPicker)) {

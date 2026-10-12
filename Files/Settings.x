@@ -650,23 +650,34 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
 
 %end
 
+// Every %ctor calls this first. Logos %ctors run in link order, and several files
+// that link before Settings.x (e.g. Player.x for GestureControls) read these keys in
+// their own %ctor to decide which hook groups to attach - registering only from this
+// file's %ctor made those defaults invisible to them.
+void YMRegisterDefaults(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        [[NSUserDefaults standardUserDefaults] registerDefaults:@{
+            AutoClearCache: @YES,
+            DownloadMethod: @2,
+            YTLogoIndex: @1,
+            BackgroundPlayback: @YES,
+            RadioMode: @YES,
+            SpeedControlStyle: @1, // button stepper under prev/pause/next is the uYouEnhanced look
+            ShowSpeedSlider: @YES, // was never registered, so the custom speed control
+                                    // (slider popup / button stepper) never actually showed
+            GestureControls: @YES, // keeps the default edge-zone activation area, so the
+                                    // center strip stays free for the fullscreen-exit gesture
+            DownloadManager: @YES,
+            SBButtonKey: @YES,
+            DisableHints: @YES,
+            RewindSeconds: @10.0,
+            ForwardSeconds: @10.0,
+        }];
+    });
+}
+
 %ctor {
-    [[NSUserDefaults standardUserDefaults] registerDefaults:@{
-        AutoClearCache: @YES,
-        DownloadMethod: @2,
-        YTLogoIndex: @1,
-        BackgroundPlayback: @YES,
-        RadioMode: @YES,
-        SpeedControlStyle: @1, // button stepper under prev/pause/next is the uYouEnhanced look
-        ShowSpeedSlider: @YES, // was never registered, so the custom speed control
-                                // (slider popup / button stepper) never actually showed
-        GestureControls: @YES, // keeps the default edge-zone activation area, so the
-                                // center strip stays free for the fullscreen-exit gesture
-        DownloadManager: @YES,
-        SBButtonKey: @YES,
-        DisableHints: @YES,
-        RewindSeconds: @10.0,
-        ForwardSeconds: @10.0,
-    }];
+    YMRegisterDefaults();
     %init;
 }

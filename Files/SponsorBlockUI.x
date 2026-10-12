@@ -945,6 +945,7 @@ static const CGFloat SBPoiMarkerXOffset = 1.5;
 #pragma mark - Constructor
 
 %ctor {
+    YMRegisterDefaults();
     %init;
     %init(SBObserver);
 }

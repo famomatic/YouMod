@@ -125,8 +125,8 @@ static void YMLayoutRadioEntryButton(UIView *actionBar) {
 %hook _ASDisplayView
 - (void)didMoveToWindow {
     %orig;
-    if (!IS_ENABLED(RadioMode)) return;
     if (![self.accessibilityIdentifier isEqualToString:@"id.video.like.button"]) return;
+    if (!IS_ENABLED(RadioMode)) return;
     UIView *test = self.superview;
     while (test != nil) {
         if ([test.accessibilityIdentifier isEqualToString:@"id.video.non_scrollable_action_bar"]) {

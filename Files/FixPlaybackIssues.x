@@ -40,6 +40,7 @@ static BOOL isReloaded = NO;
 %end
 
 %ctor {
+    YMRegisterDefaults();
     if (!IS_ENABLED(FixPlaybackIssues)) return;
     %init;
 }

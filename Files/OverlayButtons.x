@@ -925,6 +925,7 @@ static NSString *getCompactQualityLabel(MLFormat *format) {
 %end
 
 %ctor {
+    YMRegisterDefaults();
     YMOverlayButtonSpec *mute = [[YMOverlayButtonSpec alloc] init];
     mute.identifier = @"mute.video";
     mute.symbolName = IS_ENABLED(KeepMutedKey) ? @"speaker.slash" : @"speaker.wave.2";

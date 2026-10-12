@@ -844,6 +844,7 @@ NSArray<YMSearchRow *> *sbSearchRows(UIViewController *host) {
 %end
 
 %ctor {
+    YMRegisterDefaults();
     // Register SBSettingsViewControllerStyled as a runtime subclass of YTStyledViewController
     // with all methods from SBSettingsViewController — gives us YouTube's nav bar styling
     Class ytStyled = %c(YTStyledViewController);

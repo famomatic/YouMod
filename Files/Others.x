@@ -189,21 +189,23 @@
 }
 %end
 
+// Only attached when the option is on: these run for every line of text the app
+// lays out, so reading NSUserDefaults in them taxed all text rendering even with the
+// option off.
+%group DisablesRTL
 %hook NSParagraphStyle
-+ (NSWritingDirection)defaultWritingDirectionForLanguage:(id)lang { return IS_ENABLED(DisablesRTL) ? NSWritingDirectionLeftToRight : %orig; }
-+ (NSWritingDirection)_defaultWritingDirection { return IS_ENABLED(DisablesRTL) ? NSWritingDirectionLeftToRight : %orig; }
++ (NSWritingDirection)defaultWritingDirectionForLanguage:(id)lang { return NSWritingDirectionLeftToRight; }
++ (NSWritingDirection)_defaultWritingDirection { return NSWritingDirectionLeftToRight; }
+%end
 %end
 
+// userInterfaceIdiom is queried constantly by UIKit and YouTube's layout code, so
+// the override is resolved once at launch and only attached when it's set.
+static UIUserInterfaceIdiom ymForcedIdiom;
+%group ForceDeviceIdiom
 %hook UIDevice
-- (UIUserInterfaceIdiom)userInterfaceIdiom {
-    if (INTFORVAL(DeviceUIIndex) == 1) {
-        return UIUserInterfaceIdiomPad;
-    }
-    if (INTFORVAL(DeviceUIIndex) == 2) {
-        return UIUserInterfaceIdiomPhone;
-    }
-    return %orig;
-}
+- (UIUserInterfaceIdiom)userInterfaceIdiom { return ymForcedIdiom; }
+%end
 %end
 
 %hook UIKeyboardImpl
@@ -216,65 +218,78 @@
 
 // Disables YouTube's own "turn captions on when muted/volume is zero" feature.
 //
-// Hooking YTAutoCaptionsOnMuteController alone did nothing on-device across four
-// attempts, which means the decision is made (or re-applied) somewhere else - the
-// binary has the same selectors spread over several classes (the controller, the
-// player's caption state code via setCaptionStateForMuteState:player:, and the hot
-// config flags that switch the whole feature on). There is no class dump to say which
-// class owns which, so instead of guessing owners this sweeps every loaded class once
-// at launch and stubs out each *own* implementation of these selectors:
-//   BOOL-returning ones -> NO, void ones -> no-op.
-// Stubs ignore their arguments, which is ABI-safe on arm64 whatever the real signature
-// is, so unlike %orig-with-guessed-types there is no crash risk from a wrong signature.
-static BOOL ymCaptionStubNO(id self, SEL _cmd) { return NO; }
-static void ymCaptionStubVoid(id self, SEL _cmd) {}
+// Every owner below was confirmed against YouTube 21.40.5's Objective-C metadata.
+// The decision that actually turns captions on is the *class* method
+// +[YTMainAppCaptionsUtils shouldShowAutoCaptionsOnMuteWithVolume:captionsAvailable:]
+// (plus the +showCaptionsWhenDeviceMutedUserPreference user setting), which the old
+// launch-time sweep never touched because it only looked at instance methods - and
+// walking every class in the process at launch was itself a startup cost.
+%group DisableAutoCaptionsOnMute
+%hook YTMainAppCaptionsUtils
++ (BOOL)shouldShowAutoCaptionsOnMuteWithVolume:(double)volume captionsAvailable:(BOOL)available { return NO; }
++ (BOOL)showCaptionsWhenDeviceMutedUserPreference { return NO; }
+%end
 
-static void YMDisableAutoCaptionsOnMute(void) {
-    const char *boolSels[] = {
-        "isAutoCaptionsOnMuteOn", "autoCaptionsOnMuteEnabled",
-        "shouldEnableAutoCaptionsOnMuteFeature", "shouldEnableAutoCaptionsOnMuteUpdate",
-        "shouldShowAutoCaptionsOnMuteForMutedVideo", "shouldShowAutoCaptionsOnMuteWithVolume:captionsAvailable:",
-        "shouldUpdateAutoCaptionsOnMute", "shouldUpdateAutoCaptionsOnMuteWithUnpause:",
-        "shouldEnableCaptionOnMute", "showCaptionsWhenDeviceMutedUserPreference",
-        "enableAutoCaptionsOnMuteClient", "iosEnableAutoCaptionsOnMuteClientRefactor",
-        "enableIosCaptionsOnMuteA11YFix", "iosEnableCaptionsOnMutedShorts",
-        "enableAutoCaptionsHideOnUnmuteClient", NULL
-    };
-    const char *voidSels[] = {
-        "setCaptionStateForMuteState:player:",
-        "updateAutoCaptionsOnMuteVisibilityWithVolume:",
-        "updateAutoCaptionsOnMuteVisibilityWithVolume:shouldUnpause:", NULL
-    };
-    unsigned int count = 0;
-    Class *classes = objc_copyClassList(&count);
-    for (unsigned int i = 0; i < count; i++) {
-        Class cls = classes[i];
-        Class sup = class_getSuperclass(cls);
-        for (int k = 0; boolSels[k]; k++) {
-            SEL sel = sel_registerName(boolSels[k]);
-            Method m = class_getInstanceMethod(cls, sel);
-            if (!m || (sup && class_getInstanceMethod(sup, sel) == m)) continue;
-            char *ret = method_copyReturnType(m);
-            BOOL isBool = ret && (ret[0] == 'B' || ret[0] == 'c');
-            free(ret);
-            if (isBool) method_setImplementation(m, (IMP)ymCaptionStubNO);
-        }
-        for (int k = 0; voidSels[k]; k++) {
-            SEL sel = sel_registerName(voidSels[k]);
-            Method m = class_getInstanceMethod(cls, sel);
-            if (!m || (sup && class_getInstanceMethod(sup, sel) == m)) continue;
-            char *ret = method_copyReturnType(m);
-            BOOL isVoid = ret && ret[0] == 'v';
-            free(ret);
-            if (isVoid) method_setImplementation(m, (IMP)ymCaptionStubVoid);
-        }
-    }
-    free(classes);
+%hook YTAutoCaptionsOnMuteController
+- (BOOL)shouldUpdateAutoCaptionsOnMuteWithUnpause:(BOOL)unpause { return NO; }
+- (void)updateAutoCaptionsOnMuteVisibility {}
+- (void)updateAutoCaptionsOnMuteVisibilityWithVolume:(float)volume shouldUnpause:(BOOL)unpause {}
+%end
+
+%hook YTMainAppVideoPlayerOverlayViewController
+- (BOOL)isAutoCaptionsOnMuteOn { return NO; }
+- (BOOL)shouldEnableAutoCaptionsOnMuteFeature { return NO; }
+- (BOOL)shouldEnableAutoCaptionsOnMuteUpdate { return NO; }
+- (BOOL)shouldShowAutoCaptionsOnMuteForMutedVideo { return NO; }
+- (BOOL)shouldUpdateAutoCaptionsOnMute { return NO; }
+- (void)updateAutoCaptionsOnMuteVisibility {}
+- (void)updateAutoCaptionsOnMuteVisibilityWithVolume:(float)volume {}
+- (void)showAutoCaptionsOnMuteSnackbar {}
+%end
+
+// Shorts: muting a Short turns captions on through its own controller.
+%hook YTReelPlayerMutedStateControllerImpl
+- (BOOL)areCaptionsRecommendedForVideo:(id)video { return NO; }
+- (void)setCaptionStateForMuteState:(BOOL)muted player:(id)player {
+    if (!muted) %orig;
 }
+%end
+
+%hook YTUserDefaults
+- (BOOL)autoCaptionsOnMuteEnabled { return NO; }
+%end
+
+%hook YTColdConfig
+- (BOOL)enableAutoCaptionsOnMuteClient { return NO; }
+- (BOOL)shortsConsumptionClientGlobalConfigIosEnableCaptionsOnMutedShorts { return NO; }
+%end
+
+%hook YTColdConfigWatchPlayerClientGlobalConfigImpl
+- (BOOL)enableAutoCaptionsOnMuteClient { return NO; }
+%end
+
+%hook YTColdConfigShortsConsumptionClientGlobalConfigImpl
+- (BOOL)iosEnableCaptionsOnMutedShorts { return NO; }
+%end
+
+// Feed/Home inline (muted) autoplay captions.
+%hook YTHotConfig
+- (BOOL)isInlineMutedCaptionsEnabled { return NO; }
+%end
+%end
 
 %ctor {
+    YMRegisterDefaults();
     %init;
+    if (IS_ENABLED(DisablesRTL)) {
+        %init(DisablesRTL);
+    }
+    NSInteger idiomIndex = INTFORVAL(DeviceUIIndex);
+    if (idiomIndex == 1 || idiomIndex == 2) {
+        ymForcedIdiom = idiomIndex == 1 ? UIUserInterfaceIdiomPad : UIUserInterfaceIdiomPhone;
+        %init(ForceDeviceIdiom);
+    }
     if (IS_ENABLED(DisableAutoCaptionsOnMute)) {
-        YMDisableAutoCaptionsOnMute();
+        %init(DisableAutoCaptionsOnMute);
     }
 }

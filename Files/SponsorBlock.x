@@ -587,6 +587,7 @@ static UIColor *SBAccentColor() {
 }
 
 %ctor {
+    YMRegisterDefaults();
     sbSegmentCache = [NSMutableDictionary dictionary];
     %init;
 

@@ -2,7 +2,13 @@
 #import "Headers.h"
 
 // AccessGroupID
+// Resolved once: Google's SSO/keychain helpers ask for the access group on every
+// keychain access, and each lookup here is a synchronous SecItemCopyMatching IPC to
+// securityd on the calling (usually main) thread - a steady source of app-wide
+// hitches. The result dictionary was also never released.
 static NSString *accessGroupID() {
+    static NSString *cachedGroup = nil;
+    if (cachedGroup) return cachedGroup;
     NSDictionary *query = [NSDictionary dictionaryWithObjectsAndKeys:
                            (__bridge NSString *)kSecClassGenericPassword, (__bridge NSString *)kSecClass,
                            @"bundleSeedID", kSecAttrAccount,
@@ -13,11 +19,11 @@ static NSString *accessGroupID() {
     OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, (CFTypeRef *)&result);
     if (status == errSecItemNotFound) {
         status = SecItemAdd((__bridge CFDictionaryRef)query, (CFTypeRef *)&result);
-        if (status != errSecSuccess) {
-            return nil;
-        }
     }
-    NSString *accessGroup = [(__bridge NSDictionary *)result objectForKey:(__bridge NSString *)kSecAttrAccessGroup];
+    if (status != errSecSuccess || !result) return nil;
+    NSDictionary *attributes = (__bridge_transfer NSDictionary *)result;
+    NSString *accessGroup = attributes[(__bridge NSString *)kSecAttrAccessGroup];
+    if (accessGroup) cachedGroup = [accessGroup copy];
     return accessGroup;
 }
 
@@ -79,20 +85,26 @@ static NSString *accessGroupID() {
     return %orig(identifier);
 }
 - (NSString *)bundleIdentifier {
-    return [self isEqual:NSBundle.mainBundle] ? YT_BUNDLE_ID : %orig;
+    return self == NSBundle.mainBundle ? YT_BUNDLE_ID : %orig;
 }
+// Built once instead of mutable-copying the whole Info.plist on every call - this
+// getter is hit constantly by YouTube and Google's frameworks.
 - (NSDictionary *)infoDictionary {
-    NSDictionary *dict = %orig;
-    if (![self isEqual:NSBundle.mainBundle])
+    if (self != NSBundle.mainBundle)
         return %orig;
-    NSMutableDictionary *info = [dict mutableCopy];
-    if (info[@"CFBundleIdentifier"]) info[@"CFBundleIdentifier"] = YT_BUNDLE_ID;
-    if (info[@"CFBundleDisplayName"]) info[@"CFBundleDisplayName"] = YT_NAME;
-    if (info[@"CFBundleName"]) info[@"CFBundleName"] = YT_NAME;
-    return info;
+    static NSDictionary *patchedInfo = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSMutableDictionary *info = [%orig mutableCopy];
+        if (info[@"CFBundleIdentifier"]) info[@"CFBundleIdentifier"] = YT_BUNDLE_ID;
+        if (info[@"CFBundleDisplayName"]) info[@"CFBundleDisplayName"] = YT_NAME;
+        if (info[@"CFBundleName"]) info[@"CFBundleName"] = YT_NAME;
+        patchedInfo = [info copy];
+    });
+    return patchedInfo;
 }
 - (id)objectForInfoDictionaryKey:(NSString *)key {
-    if (![self isEqual:NSBundle.mainBundle])
+    if (self != NSBundle.mainBundle)
         return %orig;
     if ([key isEqualToString:@"CFBundleIdentifier"])
         return YT_BUNDLE_ID;

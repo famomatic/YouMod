@@ -1,4 +1,31 @@
 #import "Headers.h"
+#import <objc/runtime.h>
+
+// Shared dynamic colors for the OLED theme. These used to be built per view with a
+// provider block that captured the view itself (view -> backgroundColor -> block ->
+// view), a retain cycle that leaked every themed view in the app. The resolving trait
+// collection passed to the provider already carries the view's style.
+static UIColor *YMOLEDBlackOrClear(void) {
+    static UIColor *color;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        color = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
+            return traits.userInterfaceStyle == UIUserInterfaceStyleDark ? [UIColor blackColor] : [UIColor clearColor];
+        }];
+    });
+    return color;
+}
+
+static UIColor *YMOLEDBlackOrWhite(void) {
+    static UIColor *color;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        color = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
+            return traits.userInterfaceStyle == UIUserInterfaceStyleDark ? [UIColor blackColor] : [UIColor whiteColor];
+        }];
+    });
+    return color;
+}
 
 %group OLEDTheme
 %hook YTColor
@@ -43,15 +70,11 @@
         ];
     });
     if ([blackViews containsObject:self.accessibilityIdentifier]) {
-        self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-            return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-        }];
+        self.backgroundColor = YMOLEDBlackOrClear();
         return;
     }
     if ([self.accessibilityIdentifier isEqualToString:@"id.elements.components.filter_chip_bar"]) {
-        UIColor *dynamicColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-            return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-        }];
+        UIColor *dynamicColor = YMOLEDBlackOrClear();
         self.backgroundColor = dynamicColor;
         self.superview.backgroundColor = dynamicColor;
         return;
@@ -59,29 +82,36 @@
     UIViewController *controller = self._viewControllerForAncestor;
     if ([controller isKindOfClass:%c(YTActionSheetDialogViewController)] || [controller isKindOfClass:%c(YTBottomSheetController)]) {
         if ([self.superview.accessibilityIdentifier isEqualToString:@"eml.animated_subscribe_button"]) return;
-        self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-            return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-        }];
+        self.backgroundColor = YMOLEDBlackOrClear();
         return;
     } else if ([self.accessibilityIdentifier isEqualToString:@"eml.live_chat_text_message"] && [controller isKindOfClass:%c(YCHAsyncLiveChatCollectionViewController)]) {
         YCHAsyncLiveChatCollectionViewController *con = (YCHAsyncLiveChatCollectionViewController *)controller;
         if ([con.view isKindOfClass:%c(YCHAsyncLiveChatImmersiveCollectionView)]) return;
-        self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-            return isDarkMode(self) ? [UIColor blackColor] : [UIColor whiteColor];
-        }];
+        self.backgroundColor = YMOLEDBlackOrWhite();
         return;
     } else if ([controller isKindOfClass:%c(YTELMViewController)]) {
+        // Most of YouTube's UI lives in ELM controllers, and the renderer's
+        // -description is a full protobuf text dump - so classify each controller
+        // once (cached per controller and renderer) instead of per child view.
         YTELMViewController *con = (YTELMViewController *)controller;
         YTIElementRenderer *renderer = [con valueForKey:@"_renderer"];
-        NSString *desc = [renderer description];
-        if ([self.accessibilityIdentifier isEqualToString:@"id.elements.components.text_field"] && [desc containsString:@"timeline_search_input_form_id"] && [desc containsString:@"search_input.eml"]) {
-            self.superview.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-                return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-            }];
-        } else if ([desc containsString:@"transcript_panel.eml"]) {
-            self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-                return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-            }];
+        static const void *kYMOLEDRendererKey = &kYMOLEDRendererKey;
+        static const void *kYMOLEDKindKey = &kYMOLEDKindKey;
+        NSInteger kind;
+        if (objc_getAssociatedObject(con, kYMOLEDRendererKey) == renderer) {
+            kind = [objc_getAssociatedObject(con, kYMOLEDKindKey) integerValue];
+        } else {
+            NSString *desc = [renderer description];
+            kind = 0;
+            if ([desc containsString:@"timeline_search_input_form_id"] && [desc containsString:@"search_input.eml"]) kind |= 1;
+            if ([desc containsString:@"transcript_panel.eml"]) kind |= 2;
+            objc_setAssociatedObject(con, kYMOLEDRendererKey, renderer, OBJC_ASSOCIATION_ASSIGN);
+            objc_setAssociatedObject(con, kYMOLEDKindKey, @(kind), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if ((kind & 1) && [self.accessibilityIdentifier isEqualToString:@"id.elements.components.text_field"]) {
+            self.superview.backgroundColor = YMOLEDBlackOrClear();
+        } else if (kind & 2) {
+            self.backgroundColor = YMOLEDBlackOrClear();
         }
         return;
     }
@@ -100,19 +130,13 @@
         ];
     });
     if ([blackViews containsObject:self.accessibilityIdentifier]) {
-        self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-            return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-        }];
+        self.backgroundColor = YMOLEDBlackOrClear();
     }
     if ([self.accessibilityIdentifier isEqualToString:@"subs_channel_bar.collection"]) {
-        self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-            return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-        }];
+        self.backgroundColor = YMOLEDBlackOrClear();
     }
     if ([self.accessibilityIdentifier isEqualToString:@"id.elements.components.more_drawer_collection"]) {
-        self.superview.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-            return isDarkMode(self) ? [UIColor blackColor] : [UIColor whiteColor];
-        }];
+        self.superview.backgroundColor = YMOLEDBlackOrWhite();
     }
 }
 %end
@@ -122,9 +146,7 @@
     %orig;
     UIView *sup = self.superview;
     if ([sup isKindOfClass:%c(YTContextualSheetView)]) {
-        self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-            return isDarkMode(self) ? [UIColor blackColor] : [UIColor whiteColor];
-        }];
+        self.backgroundColor = YMOLEDBlackOrWhite();
     }
 }
 %end
@@ -137,9 +159,7 @@
         for (UIView *child in node.yogaChildren) {
             NSString *desc = [child description];
             if ([desc containsString:@"id.elements.components.report_form_reason_select_page.container"] || [desc containsString:@"id.elements.components.report_form_sign_in_page.container"]) {
-                self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-                    return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-                }];
+                self.backgroundColor = YMOLEDBlackOrClear();
                 break;
             }
         }
@@ -153,9 +173,7 @@
     if ([self.superview isKindOfClass:%c(GOODialogActionMDCButton)]) {
         UIViewController *controller = self._viewControllerForAncestor;
         if ([controller isKindOfClass:%c(YTBottomSheetController)] || [controller isKindOfClass:%c(GOOModalWindowViewController)]) return;
-        self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-            return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-        }];
+        self.backgroundColor = YMOLEDBlackOrClear();
     }
 }
 %end
@@ -164,9 +182,7 @@
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
     UIView *mainView = self.view;
-    mainView.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-        return isDarkMode(mainView) ? [UIColor blackColor] : [UIColor whiteColor];
-    }];
+    mainView.backgroundColor = YMOLEDBlackOrWhite();
 }
 %end
 
@@ -175,19 +191,39 @@
     %orig;
     if (view) {
         UIView *sub = view.subviews.firstObject;
-        sub.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-            return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-        }];
+        sub.backgroundColor = YMOLEDBlackOrClear();
     }
 }
 %end
 %end
 
-// The keyboard lives in its own window, which doesn't reliably inherit the
-// app's overrideUserInterfaceStyle, so isDarkMode()'s plain self.traitCollection
-// check can read the system theme instead of YouTube's actual theme. Walk the
-// responder chain to the owning view controller first, like OledKeyboard does.
-static inline BOOL OLEDKeyboardIsDarkMode(UIView *view) {
+// OLED Keyboard
+//
+// Why it never worked: the keyboard's look is driven by the text input's
+// keyboardAppearance, and YouTube's text fields leave it at Default, which follows
+// the *system* style, not YouTube's in-app theme. With YouTube on its dark theme and
+// iOS in light mode the keyboard came up light, every hook below saw "not dark", and
+// nothing was ever painted. So: track YouTube's real page style
+// (YTPageStyleControllerImpl, 1 = dark - the same value OLEDTheme keys off), force
+// the keyboard to the dark appearance while YouTube is dark, and only then paint
+// the keyboard's backgrounds black.
+static NSInteger ymAppPageStyle = -1;
+
+static BOOL YMAppIsDark(void) {
+    if (ymAppPageStyle >= 0) return ymAppPageStyle == 1;
+    // Page style not reported yet - fall back to the app's own (non-keyboard) window.
+    for (UIWindow *window in UIApplication.sharedApplication.windows) {
+        NSString *name = NSStringFromClass(window.class);
+        if ([name containsString:@"Keyboard"] || [name containsString:@"TextEffects"]) continue;
+        return window.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
+    }
+    return UITraitCollection.currentTraitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
+}
+
+// The keyboard window doesn't inherit YouTube's overrideUserInterfaceStyle, so read
+// the style the keyboard itself was built with (its input view controller's traits).
+static BOOL OLEDKeyboardIsDarkMode(UIView *view) {
+    if (YMAppIsDark()) return YES; // keyboardAppearance is forced dark below in this case
     UIResponder *responder = view;
     while (responder != nil) {
         if ([responder isKindOfClass:[UIViewController class]]) {
@@ -195,13 +231,60 @@ static inline BOOL OLEDKeyboardIsDarkMode(UIView *view) {
         }
         responder = [responder nextResponder];
     }
-    if (view.window != nil) {
-        return view.window.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
+    return view.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
+}
+
+// Keyboard backgrounds the per-class hooks below don't reach (the backdrop/glass
+// views differ between iOS versions - e.g. iOS 26's glass keyboard). Only ever walks
+// the keyboard's own windows, and only on keyboard show/frame-change notifications,
+// never per layout pass.
+static void YMOLEDPaintKeyboardView(UIView *view, NSUInteger depth) {
+    if (depth > 12) return;
+    NSString *name = NSStringFromClass(view.class);
+    BOOL isBackground = [name containsString:@"Backdrop"] || [name hasPrefix:@"UIKBVisualEffect"]
+        || ([name containsString:@"Glass"] && [name containsString:@"Background"])
+        || [name isEqualToString:@"UIKeyboardDockView"];
+    if (isBackground) {
+        if ([view isKindOfClass:[UIVisualEffectView class]]) ((UIVisualEffectView *)view).effect = nil;
+        view.backgroundColor = [UIColor blackColor];
     }
-    return UITraitCollection.currentTraitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
+    for (UIView *sub in view.subviews) YMOLEDPaintKeyboardView(sub, depth + 1);
+}
+
+static void YMOLEDPaintKeyboardWindows(void) {
+    if (!YMAppIsDark()) return;
+    for (UIWindow *window in UIApplication.sharedApplication.windows) {
+        NSString *name = NSStringFromClass(window.class);
+        if (![name containsString:@"Keyboard"] && ![name containsString:@"TextEffects"]) continue;
+        YMOLEDPaintKeyboardView(window, 0);
+    }
 }
 
 %group OLEDKeyboard
+%hook YTPageStyleControllerImpl
+- (NSInteger)pageStyle {
+    NSInteger style = %orig;
+    ymAppPageStyle = style;
+    return style;
+}
+- (void)setPageStyle:(NSInteger)style {
+    %orig;
+    ymAppPageStyle = style;
+}
+%end
+
+%hook UITextField
+- (UIKeyboardAppearance)keyboardAppearance {
+    return YMAppIsDark() ? UIKeyboardAppearanceDark : %orig;
+}
+%end
+
+%hook UITextView
+- (UIKeyboardAppearance)keyboardAppearance {
+    return YMAppIsDark() ? UIKeyboardAppearanceDark : %orig;
+}
+%end
+
 %hook UIKeyboard
 - (void)displayLayer:(id)arg1 {
     %orig;
@@ -212,13 +295,9 @@ static inline BOOL OLEDKeyboardIsDarkMode(UIView *view) {
 %hook UIPredictionViewController
 - (id)_currentTextSuggestions {
     UIKeyboard *keyboard = [%c(UIKeyboard) activeKeyboard];
-    if (OLEDKeyboardIsDarkMode(keyboard)) {
-        [self.view setBackgroundColor:[UIColor blackColor]];
-        keyboard.backgroundColor = [UIColor blackColor];
-    } else {
-        [self.view setBackgroundColor:[UIColor clearColor]];
-        keyboard.backgroundColor = [UIColor clearColor];
-    }
+    UIColor *color = OLEDKeyboardIsDarkMode(keyboard) ? [UIColor blackColor] : [UIColor clearColor];
+    [self.view setBackgroundColor:color];
+    keyboard.backgroundColor = color;
     return %orig;
 }
 %end
@@ -254,10 +333,17 @@ static inline BOOL OLEDKeyboardIsDarkMode(UIView *view) {
 %end
 
 %ctor {
+    YMRegisterDefaults();
     if (IS_ENABLED(OLEDTheme)) {
         %init(OLEDTheme);
     }
     if (IS_ENABLED(OLEDKeyboard)) {
         %init(OLEDKeyboard);
+        NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+        for (NSNotificationName name in @[UIKeyboardWillShowNotification, UIKeyboardDidShowNotification, UIKeyboardDidChangeFrameNotification]) {
+            [center addObserverForName:name object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
+                YMOLEDPaintKeyboardWindows();
+            }];
+        }
     }
 }
