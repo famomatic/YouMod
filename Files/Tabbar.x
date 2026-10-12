@@ -3,6 +3,12 @@
 
 // Tab icons
 %hook YTAppPivotBarItemStyle
+// Experimental: found via binary string search (restrictPivotBarTabWidths), no
+// header anywhere to confirm the owning class or that this is even an instance
+// method - if the guess is wrong, Logos just never attaches this one method and
+// the rest of the hook is unaffected. Meant to let fewer-than-default tabs
+// stretch to fill the bar instead of leaving empty space on the sides.
+- (BOOL)restrictPivotBarTabWidths { return NO; }
 - (UIImage *)pivotBarItemIconImageWithIconType:(int)type color:(UIColor *)color useNewIcons:(BOOL)isNew selected:(BOOL)isSelected {
     if (type == 1 || type == 2 || type == 3 || type == 4 || type == 5 || type == 6 || type == 7 || type == 8 || type == 9 || type == 10 || type == 11 || type == 12 || type == 13 || type == 14 || type == 15 || type == 16 || type == 17) {
         NSString *imageName;
@@ -99,6 +105,10 @@ static NSString *ymTitleForTabID(NSString *tabID) {
 }
 
 %hook YTPivotBarView
+// Same experimental flag as YTAppPivotBarItemStyle above, tried on both guessed
+// classes since there's no header for either to confirm which (if either) is
+// the real owner.
+- (BOOL)restrictPivotBarTabWidths { return NO; }
 - (void)setRenderer:(YTIPivotBarRenderer *)renderer {
     NSArray *savedOrder = [[NSUserDefaults standardUserDefaults] arrayForKey:TabOrder];
     if (savedOrder.count > 0) {
