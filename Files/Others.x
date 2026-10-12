@@ -216,22 +216,39 @@
 // Disables YouTube's own "turn captions on when muted/volume is zero" feature
 // (YTAutoCaptionsOnMuteController, new as of ~21.40.x).
 //
-// Confirmed on-device NOT sufficient: isAutoCaptionsOnMuteOn/
-// shouldEnableAutoCaptionsOnMuteFeature are evidently just feature-enabled
-// getters, not the per-mute-event gate, since captions still appear on mute
-// with DisableAutoCaptionsOnMute on. The binary's string pool has a larger
-// cluster of related selectors - shouldShowAutoCaptionsOnMuteForMutedVideo and
-// shouldUpdateAutoCaptionsOnMute (both no-argument, so safe to hook the same
-// way as the two above: no parameter types to get wrong) are much likelier to
-// be the actual per-event decision. The rest of that cluster
-// (shouldShowAutoCaptionsOnMuteWithVolume:captionsAvailable:,
-// updateAutoCaptionsOnMuteVisibilityWithVolume:, etc.) take unconfirmed
-// non-BOOL parameters with no header anywhere to check against - guessing a
-// parameter type wrong there risks a crash, not just a no-op, so those are
-// deliberately left alone pending real device/debugger confirmation.
+// Confirmed on-device NOT sufficient twice now: neither the original two getters
+// nor the two no-arg additions below stop captions from appearing on mute.
 %hook YTAutoCaptionsOnMuteController
 - (BOOL)isAutoCaptionsOnMuteOn { return IS_ENABLED(DisableAutoCaptionsOnMute) ? NO : %orig; }
 - (BOOL)shouldEnableAutoCaptionsOnMuteFeature { return IS_ENABLED(DisableAutoCaptionsOnMute) ? NO : %orig; }
 - (BOOL)shouldShowAutoCaptionsOnMuteForMutedVideo { return IS_ENABLED(DisableAutoCaptionsOnMute) ? NO : %orig; }
 - (BOOL)shouldUpdateAutoCaptionsOnMute { return IS_ENABLED(DisableAutoCaptionsOnMute) ? NO : %orig; }
 %end
+
+// Taking the next step: the remaining cluster
+// (shouldShowAutoCaptionsOnMuteWithVolume:captionsAvailable:,
+// updateAutoCaptionsOnMuteVisibilityWithVolume:[shouldUnpause:],
+// shouldUpdateAutoCaptionsOnMuteWithUnpause:) takes unconfirmed parameter types
+// with no header anywhere to check against. Calling %orig with a wrong guessed
+// signature is a real crash risk (the original reads the args with its own,
+// possibly different, real types) - so this whole group is a complete
+// replacement that never calls %orig and never reads its own arguments, and is
+// only even attached (via the conditional %init below) when the feature is
+// already being disabled, so the only remaining risk is one of these methods
+// not actually existing on this class, which is a silent no-op in Logos, not a
+// crash - never the original, signature-sensitive path.
+%group AutoCaptionsOnMuteHardOverride
+%hook YTAutoCaptionsOnMuteController
+- (BOOL)shouldShowAutoCaptionsOnMuteWithVolume:(float)volume captionsAvailable:(BOOL)available { return NO; }
+- (BOOL)shouldUpdateAutoCaptionsOnMuteWithUnpause:(BOOL)unpause { return NO; }
+- (void)updateAutoCaptionsOnMuteVisibilityWithVolume:(float)volume {}
+- (void)updateAutoCaptionsOnMuteVisibilityWithVolume:(float)volume shouldUnpause:(BOOL)unpause {}
+%end
+%end
+
+%ctor {
+    %init;
+    if (IS_ENABLED(DisableAutoCaptionsOnMute)) {
+        %init(AutoCaptionsOnMuteHardOverride);
+    }
+}

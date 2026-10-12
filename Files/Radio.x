@@ -116,12 +116,24 @@ static void YMLayoutRadioEntryButton(UIView *actionBar) {
 // reflowing on fullscreen exit). didMoveToWindow is enough in practice: YouTube's
 // Texture cells get recreated rather than just resized across a change this big,
 // which is also the only hook Download.x's similar gesture-injection relies on.
+// The action bar container itself isn't necessarily an _ASDisplayView (or at least
+// isn't reliably reachable as one directly), so - matching the walk-up pattern
+// Player.x's existing YouModFilterVideoButtons already uses successfully - this
+// triggers off a child button that's always present (the like button) and walks
+// up .superview looking for the container's identifier, rather than assuming the
+// container fires its own didMoveToWindow with a matching identifier.
 %hook _ASDisplayView
 - (void)didMoveToWindow {
     %orig;
     if (!IS_ENABLED(RadioMode)) return;
-    if ([self.accessibilityIdentifier isEqualToString:@"id.video.non_scrollable_action_bar"]) {
-        YMLayoutRadioEntryButton(self);
+    if (![self.accessibilityIdentifier isEqualToString:@"id.video.like.button"]) return;
+    UIView *test = self.superview;
+    while (test != nil) {
+        if ([test.accessibilityIdentifier isEqualToString:@"id.video.non_scrollable_action_bar"]) {
+            YMLayoutRadioEntryButton(test);
+            return;
+        }
+        test = test.superview;
     }
 }
 %end

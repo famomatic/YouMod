@@ -657,6 +657,8 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
         YTLogoIndex: @1,
         BackgroundPlayback: @YES,
         RadioMode: @YES,
+        ShowSpeedSlider: @YES, // was never registered, so the custom speed control
+                                // (slider popup / button stepper) never actually showed
         GestureControls: @YES, // keeps the default edge-zone activation area, so the
                                 // center strip stays free for the fullscreen-exit gesture
         DownloadManager: @YES,
