@@ -352,6 +352,11 @@
 "SPEED_CONTROL_STYLE" = "배속 컨트롤 스타일";
 "SPEED_STYLE_SLIDER" = "슬라이더";
 "SPEED_STYLE_BUTTON" = "버튼";
+"RADIO_MODE_HEADER" = "라디오 모드";
+"RADIO_MODE" = "라디오 모드 사용";
+"RADIO_MODE_DESC" = "좋아요/공유/다운로드 줄 아래에 YouTube Music처럼 오디오만 듣는 버튼을 추가합니다. 비디오를 숨기고 제목/반복/셔플(재생목록일 때)/볼륨을 표시하며, PIP가 뜨지 않도록 합니다.";
+"RADIO_MODE_ENTER" = "라디오 모드로 듣기";
+"RADIO_MODE_EXIT" = "비디오로 돌아가기";
 "CHOOSE_FROM_ORIGINAL" = "원래 배속 메뉴 사용";
 "SEEK_ON_OVERLAY" = "오버레이에서 탐색";
 "SEEK_ON_OVERLAY_DESC" = "동영상 오버레이에서 좌우로 스와이프하여 재생 위치를 탐색할 수 있습니다.";

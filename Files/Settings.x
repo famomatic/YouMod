@@ -293,6 +293,8 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             [YMToggle(YMLOC(@"LOCK_SPEED"), YMLOC(@"LOCK_SPEED_DESC"), LockSpeed) visibleWhenKey:HoldToSpeedIndex isGreaterThan:0],
             YMToggle(YMLOC(@"SHOW_SPEED_SLIDER"), YMLOC(@"SHOW_SPEED_SLIDER_DESC"), ShowSpeedSlider),
             [YMTextSegment(YMLOC(@"SPEED_CONTROL_STYLE"), SpeedControlStyle, (@[YMLOC(@"SPEED_STYLE_SLIDER"), YMLOC(@"SPEED_STYLE_BUTTON")]), 0) visibleWhenBoolKey:ShowSpeedSlider],
+            YMHeader(YMLOC(@"RADIO_MODE_HEADER")),
+            YMToggle(YMLOC(@"RADIO_MODE"), YMLOC(@"RADIO_MODE_DESC"), RadioMode),
             YMHeader(YMLOC(@"INTERFACE")),
             YMAction(YMLOC(@"MANAGE_OVERLAY_BUTTONS"), YMLOC(@"MANAGE_OVERLAY_BUTTONS_DESC"), ^(UIViewController *vc) {
                 (void)vc;
@@ -652,6 +654,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
         DownloadMethod: @2,
         YTLogoIndex: @1,
         BackgroundPlayback: @YES,
+        RadioMode: @YES,
         DownloadManager: @YES,
         SBButtonKey: @YES,
         DisableHints: @YES,
