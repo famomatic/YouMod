@@ -292,7 +292,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             YMPicker(YMLOC(@"HOLD_TO_SPEED"), YMLOC(@"HOLD_TO_SPEED_DESC"), HoldToSpeedIndex, (@[YMLOC(@"DEFAULT"), @"0.25x", @"0.5x", @"0.75x", @"1x", @"1.25x", @"1.5x", @"1.75x", @"2x", @"3x", @"4x", @"5x"]), 0),
             [YMToggle(YMLOC(@"LOCK_SPEED"), YMLOC(@"LOCK_SPEED_DESC"), LockSpeed) visibleWhenKey:HoldToSpeedIndex isGreaterThan:0],
             YMToggle(YMLOC(@"SHOW_SPEED_SLIDER"), YMLOC(@"SHOW_SPEED_SLIDER_DESC"), ShowSpeedSlider),
-            [YMTextSegment(YMLOC(@"SPEED_CONTROL_STYLE"), SpeedControlStyle, (@[YMLOC(@"SPEED_STYLE_SLIDER"), YMLOC(@"SPEED_STYLE_BUTTON")]), 0) visibleWhenBoolKey:ShowSpeedSlider],
+            [YMTextSegment(YMLOC(@"SPEED_CONTROL_STYLE"), SpeedControlStyle, (@[YMLOC(@"SPEED_STYLE_SLIDER"), YMLOC(@"SPEED_STYLE_BUTTON")]), 1) visibleWhenBoolKey:ShowSpeedSlider],
             YMHeader(YMLOC(@"RADIO_MODE_HEADER")),
             YMToggle(YMLOC(@"RADIO_MODE"), YMLOC(@"RADIO_MODE_DESC"), RadioMode),
             YMHeader(YMLOC(@"INTERFACE")),
@@ -657,6 +657,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
         YTLogoIndex: @1,
         BackgroundPlayback: @YES,
         RadioMode: @YES,
+        SpeedControlStyle: @1, // button stepper under prev/pause/next is the uYouEnhanced look
         ShowSpeedSlider: @YES, // was never registered, so the custom speed control
                                 // (slider popup / button stepper) never actually showed
         GestureControls: @YES, // keeps the default edge-zone activation area, so the

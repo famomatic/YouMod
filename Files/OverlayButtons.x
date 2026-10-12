@@ -318,10 +318,17 @@ static UIButton *YMCreateSpeedStepperButton(YTMainAppControlsOverlayView *overla
     return button;
 }
 
-// Positions the -/+/text trio under YouTube's own previous/pause/next buttons. All
-// three are plain properties on the overlay in every build we checked (confirmed
-// present in 21.40.5's selector list); guarded with respondsToSelector: in case a
-// future YouTube version moves them, in which case the trio just doesn't appear.
+static UIView *YMOverlayTransportView(UIView *overlay, NSString *ivarKey, NSString *propKey) {
+    for (NSString *key in @[ivarKey, propKey]) {
+        @try {
+            id v = [overlay valueForKey:key];
+            if ([v isKindOfClass:[UIView class]] && ((UIView *)v).window) return v;
+        } @catch (__unused NSException *e) {}
+    }
+    return nil;
+}
+
+// Positions the -/+/text trio under YouTube's own previous/pause/next buttons.
 static void YMLayoutSpeedStepper(YTMainAppControlsOverlayView *overlay, BOOL shouldBeVisible) {
     UIButton *minusBtn = (UIButton *)[overlay viewWithTag:YMSpeedStepperMinusTag];
     UIButton *plusBtn = (UIButton *)[overlay viewWithTag:YMSpeedStepperPlusTag];
@@ -334,25 +341,23 @@ static void YMLayoutSpeedStepper(YTMainAppControlsOverlayView *overlay, BOOL sho
         textLabel.hidden = YES;
         return;
     }
-    if (![overlay respondsToSelector:@selector(previousButton)] || ![overlay respondsToSelector:@selector(nextButton)] || ![overlay respondsToSelector:@selector(playPauseButton)]) {
-        minusBtn.hidden = YES;
-        plusBtn.hidden = YES;
-        textLabel.hidden = YES;
-        return;
-    }
+    // The overlay has no previousButton/nextButton/playPauseButton *properties* in 21.40.5 -
+    // the respondsToSelector: check that used to be here always failed, which is why the
+    // stepper never appeared. The real storage is the ivars _previousButtonView,
+    // _nextButtonView (YTTransportControlsButtonView) and _playPauseButton (YTPlaybackButton),
+    // the same ones uYouEnhanced reaches with MSHookIvar. Fall back to scanning for those
+    // classes, then to fixed positions around the overlay centre, so something always shows.
+    UIView *prevView = YMOverlayTransportView(overlay, @"_previousButtonView", @"previousButton");
+    UIView *nextView = YMOverlayTransportView(overlay, @"_nextButtonView", @"nextButton");
+    UIView *playView = YMOverlayTransportView(overlay, @"_playPauseButton", @"playPauseButton");
 
-    UIButton *prevButton = [overlay previousButton];
-    UIButton *nextButton = [overlay nextButton];
-    UIButton *playPauseButton = [overlay playPauseButton];
-    if (!prevButton.window || !nextButton.window || !playPauseButton.window) {
-        minusBtn.hidden = YES;
-        plusBtn.hidden = YES;
-        textLabel.hidden = YES;
-        return;
-    }
-    CGRect prevFrame = [prevButton convertRect:prevButton.bounds toView:overlay];
-    CGRect nextFrame = [nextButton convertRect:nextButton.bounds toView:overlay];
-    CGRect playPauseFrame = [playPauseButton convertRect:playPauseButton.bounds toView:overlay];
+    CGRect b = overlay.bounds;
+    CGRect prevFrame = CGRectMake(CGRectGetMidX(b) - 100, CGRectGetMidY(b) - 20, 40, 40);
+    CGRect nextFrame = CGRectMake(CGRectGetMidX(b) + 60, CGRectGetMidY(b) - 20, 40, 40);
+    CGRect playPauseFrame = CGRectMake(CGRectGetMidX(b) - 20, CGRectGetMidY(b) - 20, 40, 40);
+    if (prevView.window) prevFrame = [prevView convertRect:prevView.bounds toView:overlay];
+    if (nextView.window) nextFrame = [nextView convertRect:nextView.bounds toView:overlay];
+    if (playView.window) playPauseFrame = [playView convertRect:playView.bounds toView:overlay];
 
     if (!minusBtn) minusBtn = YMCreateSpeedStepperButton(overlay, YMSpeedStepperMinusTag, @"minus.circle.fill", @selector(ymSpeedStepperMinusTapped:));
     if (!plusBtn) plusBtn = YMCreateSpeedStepperButton(overlay, YMSpeedStepperPlusTag, @"plus.circle.fill", @selector(ymSpeedStepperPlusTapped:));
@@ -612,7 +617,10 @@ static BOOL isRelatedVideosExpanded = NO;
         }
     }
 
-    if (specs.count == 0) return;
+    if (specs.count == 0) {
+        YMLayoutSpeedStepper(self, self.isOverlayVisible && !isRelatedVideosExpanded && !YouModRadioModeActive());
+        return;
+    }
 
     YTPlayerViewController *player = YMPlayerVCFromOverlay(self);
     YTSingleVideoController *sgvid = player.activeVideo;
@@ -689,6 +697,7 @@ static BOOL isRelatedVideosExpanded = NO;
         YTQTMButton *btn = (YTQTMButton *)[self viewWithTag:spec.viewTag];
         if (btn) btn.hidden = !visible || isRelatedVideosExpanded || YouModRadioModeActive();
     }
+    YMLayoutSpeedStepper(self, visible && !isRelatedVideosExpanded && !YouModRadioModeActive());
 }
 
 %new

@@ -1,3 +1,4 @@
+#import <objc/runtime.h>
 #import "Headers.h"
 
 // Background playback
@@ -213,42 +214,67 @@
 - (void)setSubheader:(UIView *)view { if (!IS_ENABLED(HideEngagementSubbar)) %orig; }
 %end
 
-// Disables YouTube's own "turn captions on when muted/volume is zero" feature
-// (YTAutoCaptionsOnMuteController, new as of ~21.40.x).
+// Disables YouTube's own "turn captions on when muted/volume is zero" feature.
 //
-// Confirmed on-device NOT sufficient twice now: neither the original two getters
-// nor the two no-arg additions below stop captions from appearing on mute.
-%hook YTAutoCaptionsOnMuteController
-- (BOOL)isAutoCaptionsOnMuteOn { return IS_ENABLED(DisableAutoCaptionsOnMute) ? NO : %orig; }
-- (BOOL)shouldEnableAutoCaptionsOnMuteFeature { return IS_ENABLED(DisableAutoCaptionsOnMute) ? NO : %orig; }
-- (BOOL)shouldShowAutoCaptionsOnMuteForMutedVideo { return IS_ENABLED(DisableAutoCaptionsOnMute) ? NO : %orig; }
-- (BOOL)shouldUpdateAutoCaptionsOnMute { return IS_ENABLED(DisableAutoCaptionsOnMute) ? NO : %orig; }
-%end
+// Hooking YTAutoCaptionsOnMuteController alone did nothing on-device across four
+// attempts, which means the decision is made (or re-applied) somewhere else - the
+// binary has the same selectors spread over several classes (the controller, the
+// player's caption state code via setCaptionStateForMuteState:player:, and the hot
+// config flags that switch the whole feature on). There is no class dump to say which
+// class owns which, so instead of guessing owners this sweeps every loaded class once
+// at launch and stubs out each *own* implementation of these selectors:
+//   BOOL-returning ones -> NO, void ones -> no-op.
+// Stubs ignore their arguments, which is ABI-safe on arm64 whatever the real signature
+// is, so unlike %orig-with-guessed-types there is no crash risk from a wrong signature.
+static BOOL ymCaptionStubNO(id self, SEL _cmd) { return NO; }
+static void ymCaptionStubVoid(id self, SEL _cmd) {}
 
-// Taking the next step: the remaining cluster
-// (shouldShowAutoCaptionsOnMuteWithVolume:captionsAvailable:,
-// updateAutoCaptionsOnMuteVisibilityWithVolume:[shouldUnpause:],
-// shouldUpdateAutoCaptionsOnMuteWithUnpause:) takes unconfirmed parameter types
-// with no header anywhere to check against. Calling %orig with a wrong guessed
-// signature is a real crash risk (the original reads the args with its own,
-// possibly different, real types) - so this whole group is a complete
-// replacement that never calls %orig and never reads its own arguments, and is
-// only even attached (via the conditional %init below) when the feature is
-// already being disabled, so the only remaining risk is one of these methods
-// not actually existing on this class, which is a silent no-op in Logos, not a
-// crash - never the original, signature-sensitive path.
-%group AutoCaptionsOnMuteHardOverride
-%hook YTAutoCaptionsOnMuteController
-- (BOOL)shouldShowAutoCaptionsOnMuteWithVolume:(float)volume captionsAvailable:(BOOL)available { return NO; }
-- (BOOL)shouldUpdateAutoCaptionsOnMuteWithUnpause:(BOOL)unpause { return NO; }
-- (void)updateAutoCaptionsOnMuteVisibilityWithVolume:(float)volume {}
-- (void)updateAutoCaptionsOnMuteVisibilityWithVolume:(float)volume shouldUnpause:(BOOL)unpause {}
-%end
-%end
+static void YMDisableAutoCaptionsOnMute(void) {
+    const char *boolSels[] = {
+        "isAutoCaptionsOnMuteOn", "autoCaptionsOnMuteEnabled",
+        "shouldEnableAutoCaptionsOnMuteFeature", "shouldEnableAutoCaptionsOnMuteUpdate",
+        "shouldShowAutoCaptionsOnMuteForMutedVideo", "shouldShowAutoCaptionsOnMuteWithVolume:captionsAvailable:",
+        "shouldUpdateAutoCaptionsOnMute", "shouldUpdateAutoCaptionsOnMuteWithUnpause:",
+        "shouldEnableCaptionOnMute", "showCaptionsWhenDeviceMutedUserPreference",
+        "enableAutoCaptionsOnMuteClient", "iosEnableAutoCaptionsOnMuteClientRefactor",
+        "enableIosCaptionsOnMuteA11YFix", "iosEnableCaptionsOnMutedShorts",
+        "enableAutoCaptionsHideOnUnmuteClient", NULL
+    };
+    const char *voidSels[] = {
+        "setCaptionStateForMuteState:player:",
+        "updateAutoCaptionsOnMuteVisibilityWithVolume:",
+        "updateAutoCaptionsOnMuteVisibilityWithVolume:shouldUnpause:", NULL
+    };
+    unsigned int count = 0;
+    Class *classes = objc_copyClassList(&count);
+    for (unsigned int i = 0; i < count; i++) {
+        Class cls = classes[i];
+        Class sup = class_getSuperclass(cls);
+        for (int k = 0; boolSels[k]; k++) {
+            SEL sel = sel_registerName(boolSels[k]);
+            Method m = class_getInstanceMethod(cls, sel);
+            if (!m || (sup && class_getInstanceMethod(sup, sel) == m)) continue;
+            char *ret = method_copyReturnType(m);
+            BOOL isBool = ret && (ret[0] == 'B' || ret[0] == 'c');
+            free(ret);
+            if (isBool) method_setImplementation(m, (IMP)ymCaptionStubNO);
+        }
+        for (int k = 0; voidSels[k]; k++) {
+            SEL sel = sel_registerName(voidSels[k]);
+            Method m = class_getInstanceMethod(cls, sel);
+            if (!m || (sup && class_getInstanceMethod(sup, sel) == m)) continue;
+            char *ret = method_copyReturnType(m);
+            BOOL isVoid = ret && ret[0] == 'v';
+            free(ret);
+            if (isVoid) method_setImplementation(m, (IMP)ymCaptionStubVoid);
+        }
+    }
+    free(classes);
+}
 
 %ctor {
     %init;
     if (IS_ENABLED(DisableAutoCaptionsOnMute)) {
-        %init(AutoCaptionsOnMuteHardOverride);
+        YMDisableAutoCaptionsOnMute();
     }
 }
