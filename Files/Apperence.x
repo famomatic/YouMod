@@ -23,20 +23,39 @@
 - (UIColor *)backgroundColor:(NSInteger)pageStyle { return pageStyle == 1 ? [UIColor blackColor] : %orig; }
 %end
 
+// _ASDisplayView backs every Texture node in the whole app, so this hook runs on
+// every single view's window attachment everywhere, not just OLED-theme-relevant
+// ones - a real cost during any big reflow (e.g. the whole watch-next feed
+// rebuilding when fullscreen is exited). The NSSet used to be rebuilt from scratch
+// on every call instead of once; hoisted to static. The "filter_chip_bar" check
+// further down doesn't need the expensive _viewControllerForAncestor walk at all,
+// so it's moved ahead of it to skip that walk for the common case.
 %hook _ASDisplayView
 - (void)didMoveToWindow {
     %orig;
-    NSSet *blackViews = [NSSet setWithObjects:
-        @"id.elements.components.comment_composer",
-        @"id.subs.subscriptions_channel_bar",
-        @"PAmedia_hub_device_picker.engagement_panel_header", nil
-    ];  
+    static NSSet *blackViews = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        blackViews = [NSSet setWithObjects:
+            @"id.elements.components.comment_composer",
+            @"id.subs.subscriptions_channel_bar",
+            @"PAmedia_hub_device_picker.engagement_panel_header", nil
+        ];
+    });
     if ([blackViews containsObject:self.accessibilityIdentifier]) {
         self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
             return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
         }];
         return;
-    }     
+    }
+    if ([self.accessibilityIdentifier isEqualToString:@"id.elements.components.filter_chip_bar"]) {
+        UIColor *dynamicColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
+            return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
+        }];
+        self.backgroundColor = dynamicColor;
+        self.superview.backgroundColor = dynamicColor;
+        return;
+    }
     UIViewController *controller = self._viewControllerForAncestor;
     if ([controller isKindOfClass:%c(YTActionSheetDialogViewController)] || [controller isKindOfClass:%c(YTBottomSheetController)]) {
         if ([self.superview.accessibilityIdentifier isEqualToString:@"eml.animated_subscribe_button"]) return;
@@ -65,13 +84,6 @@
             }];
         }
         return;
-    } else if ([self.accessibilityIdentifier isEqualToString:@"id.elements.components.filter_chip_bar"]) {
-        UIColor *dynamicColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-            return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-        }];
-        self.backgroundColor = dynamicColor;
-        self.superview.backgroundColor = dynamicColor;
-        return;
     }
 }
 %end
@@ -79,10 +91,14 @@
 %hook ASCollectionView
 - (void)didMoveToWindow {
     %orig;
-    NSSet *blackViews = [NSSet setWithObjects:
-        @"eml.chip_bar_collection",
-        @"subs_channel_bar.collection", nil
-    ];  
+    static NSSet *blackViews = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        blackViews = [NSSet setWithObjects:
+            @"eml.chip_bar_collection",
+            @"subs_channel_bar.collection", nil
+        ];
+    });
     if ([blackViews containsObject:self.accessibilityIdentifier]) {
         self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
             return isDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
