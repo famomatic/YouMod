@@ -61,8 +61,8 @@ on:
         type: boolean
 
       demc:
-        description: "Integrate DontEatMyContent"
-        default: true
+        description: "Integrate DontEatMyContent (YouMod already includes its notch avoidance)"
+        default: false
         required: false
         type: boolean
 
