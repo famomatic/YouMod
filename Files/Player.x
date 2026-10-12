@@ -1,4 +1,5 @@
 #import "Headers.h"
+#import <AVFoundation/AVFoundation.h>
 
 static BOOL isWiFiConnected() {
     struct sockaddr_in zeroAddress;
@@ -27,6 +28,110 @@ static BOOL isWiFiConnected() {
 
 extern void YouModDownloadSetCurrentPlayer(YTPlayerViewController *player);
 extern YTPlayerViewController *YouModDownloadGetCurrentPlayer(void);
+
+#pragma mark - App-internal volume boost (ported from VolumeBoostYT's core, not its own gesture)
+// GestureControls' right/left pan gesture already covers volume more comfortably than
+// VolumeBoostYT's own right-edge-swipe-then-drag; this just ports the part that's
+// actually useful - the ability to amplify YouTube's own audio past 100% without
+// touching the system volume - so VolumeGestureTarget can pick it as what the
+// gesture adjusts instead of system volume.
+
+static float gYMAppVolumeMultiplier = 1.0f;
+static NSHashTable *gYMVolumeRenderers = nil;
+
+static void YMRegisterVolumeRenderer(id renderer) {
+    if (!gYMVolumeRenderers) gYMVolumeRenderers = [NSHashTable weakObjectsHashTable];
+    if (renderer) [gYMVolumeRenderers addObject:renderer];
+}
+
+// Same curve VolumeBoostYT used: multiplier 1.0-20.0 in the UI, mapped onto a 200x
+// max physical amplitude so loudness increases smoothly rather than jumping harshly.
+static float YMLogarithmicVolumeMultiplier(void) {
+    float m = gYMAppVolumeMultiplier;
+    if (m <= 1.0f) return m;
+    return powf(200.0f, (m - 1.0f) / 19.0f);
+}
+
+static void YMNotifyAppVolumeChange(void) {
+    for (id renderer in [gYMVolumeRenderers allObjects]) {
+        if ([renderer respondsToSelector:@selector(setVolume:)]) {
+            // Re-apply base volume 1.0, which re-enters our setVolume: hook below and
+            // applies the current multiplier - avoids needing to read the renderer's
+            // existing volume back out.
+            [renderer setVolume:1.0f];
+        }
+    }
+}
+
+static float YMGetAppVolumeMultiplier(void) {
+    return gYMAppVolumeMultiplier;
+}
+
+static void YMSetAppVolumeMultiplier(float multiplier) {
+    gYMAppVolumeMultiplier = fmaxf(fminf(multiplier, 20.0f), 0.0f);
+    YMNotifyAppVolumeChange();
+}
+
+%group AppVolumeBoost
+
+%hook AVPlayer
+- (instancetype)init {
+    id orig = %orig;
+    YMRegisterVolumeRenderer(orig);
+    return orig;
+}
+- (void)setVolume:(float)volume {
+    YMRegisterVolumeRenderer(self);
+    if (INTFORVAL(VolumeGestureTarget) == 1) volume = volume * YMLogarithmicVolumeMultiplier();
+    %orig(volume);
+}
+%end
+
+%hook AVAudioPlayerNode
+- (instancetype)init {
+    id orig = %orig;
+    YMRegisterVolumeRenderer(orig);
+    return orig;
+}
+- (void)setVolume:(float)volume {
+    YMRegisterVolumeRenderer(self);
+    if (INTFORVAL(VolumeGestureTarget) == 1) volume = volume * YMLogarithmicVolumeMultiplier();
+    %orig(volume);
+}
+%end
+
+%hook AVAudioPlayer
+- (instancetype)initWithContentsOfURL:(NSURL *)url error:(NSError **)outError {
+    id orig = %orig;
+    YMRegisterVolumeRenderer(orig);
+    return orig;
+}
+- (instancetype)initWithData:(NSData *)data error:(NSError **)outError {
+    id orig = %orig;
+    YMRegisterVolumeRenderer(orig);
+    return orig;
+}
+- (void)setVolume:(float)volume {
+    YMRegisterVolumeRenderer(self);
+    if (INTFORVAL(VolumeGestureTarget) == 1) volume = volume * YMLogarithmicVolumeMultiplier();
+    %orig(volume);
+}
+%end
+
+%hook AVSampleBufferAudioRenderer
+- (instancetype)init {
+    id orig = %orig;
+    YMRegisterVolumeRenderer(orig);
+    return orig;
+}
+- (void)setVolume:(float)volume {
+    YMRegisterVolumeRenderer(self);
+    if (INTFORVAL(VolumeGestureTarget) == 1) volume = volume * YMLogarithmicVolumeMultiplier();
+    %orig(volume);
+}
+%end
+
+%end // AppVolumeBoost
 
 #pragma mark - Rewind / Fast-forward on iOS media controls
 
@@ -912,7 +1017,7 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
             deadzoneStartingTranslation = [panGestureRecognizer translationInView:self.view].y;
             
             if (controlType == 1) initialBrightness = [UIScreen mainScreen].brightness;
-            else if (controlType == 2) initialVolume = [[AVAudioSession sharedInstance] outputVolume];
+            else if (controlType == 2) initialVolume = (INTFORVAL(VolumeGestureTarget) == 1) ? YMGetAppVolumeMultiplier() : [[AVAudioSession sharedInstance] outputVolume];
             else if (controlType == 3) initialSpeed = [ovcon currentPlaybackRate];
 
             if (IS_ENABLED(GestureHUD) && controlType != 0) {
@@ -964,12 +1069,33 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
                 }
                 
                 percentString = [NSString stringWithFormat:@" %d%%", (int)(newBrightness * 100)];
+            } else if (controlType == 2 && INTFORVAL(VolumeGestureTarget) == 1) {
+                // App-internal boost (ported from VolumeBoostYT): range is 0-20x
+                // instead of 0-1.0, so it gets its own sensitivity constant, same
+                // idea as speed's speedSensitivity below.
+                float appVolumeSensitivity = 8.0;
+                float newMultiplier = fmaxf(fminf(initialVolume + delta * appVolumeSensitivity, 20.0), 0.0);
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    YMSetAppVolumeMultiplier(newMultiplier);
+                });
+
+                if (newMultiplier == 0.0f) {
+                    symbolName = @"speaker.slash.fill";
+                } else if (newMultiplier <= 1.0f) {
+                    symbolName = @"speaker.wave.1.fill";
+                } else if (newMultiplier <= 5.0f) {
+                    symbolName = @"speaker.wave.2.fill";
+                } else {
+                    symbolName = @"speaker.wave.3.fill";
+                }
+
+                percentString = [NSString stringWithFormat:@" %d%%", (int)(newMultiplier * 100)];
             } else if (controlType == 2) {
                 float newVolume = fmaxf(fminf(initialVolume + delta, 1.0), 0.0);
                 dispatch_async(dispatch_get_main_queue(), ^{
                     volumeViewSlider.value = newVolume;
                 });
-                
+
                 if (newVolume == 0.0f) {
                     symbolName = @"speaker.slash.fill";
                 } else if (newVolume <= 0.25f) {
@@ -981,7 +1107,7 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
                 } else {
                     symbolName = @"speaker.wave.3.fill";
                 }
-                
+
                 percentString = [NSString stringWithFormat:@" %d%%", (int)(newVolume * 100)];
             } else if (controlType == 3) {
                 float speedSensitivity = 8.0; 
@@ -1585,5 +1711,8 @@ static void YouModFilterVideoButtons(_ASDisplayView *view, NSString *iden) {
     }
     if (IS_ENABLED(ForceMiniPlayer)) {
         %init(ForceMiniPlayer);
+    }
+    if (IS_ENABLED(GestureControls)) {
+        %init(AppVolumeBoost);
     }
 }

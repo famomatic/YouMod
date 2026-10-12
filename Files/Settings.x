@@ -356,6 +356,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             [YMPicker(YMLOC(@"GESTURE_AREA"), YMLOC(@"GESTURE_AREA_DESC"), GestureActivationArea, (@[@"10%", @"15%", @"20%", @"25%", @"30%", @"35%", @"40%", @"45%", @"50%"]), 1) visibleWhenBoolKey:GestureControls],
             [YMPicker(YMLOC(@"LEFT_SIDE_GESTURE"), nil, LeftSideGesture, (@[YMLOC(@"GESTURE_NONE"), YMLOC(@"GESTURE_BRIGHTNESS"), YMLOC(@"GESTURE_VOLUME"), YMLOC(@"GESTURE_SPEED")]), 1) visibleWhenBoolKey:GestureControls],
             [YMPicker(YMLOC(@"RIGHT_SIDE_GESTURE"), nil, RightSideGesture, (@[YMLOC(@"GESTURE_NONE"), YMLOC(@"GESTURE_BRIGHTNESS"), YMLOC(@"GESTURE_VOLUME"), YMLOC(@"GESTURE_SPEED")]), 2) visibleWhenBoolKey:GestureControls],
+            [YMTextSegment(YMLOC(@"VOLUME_GESTURE_TARGET"), VolumeGestureTarget, (@[YMLOC(@"VOLUME_TARGET_SYSTEM"), YMLOC(@"VOLUME_TARGET_APP")]), 0) visibleWhenBoolKey:GestureControls],
             [YMToggle(YMLOC(@"GESTURE_HUD"), YMLOC(@"GESTURE_HUD_DESC"), GestureHUD) visibleWhenBoolKey:GestureControls],
             [[YMPicker(YMLOC(@"GESTURE_HUD_SIZE"), YMLOC(@"GESTURE_HUD_SIZE_DESC"), GestureHUDSize, (@[YMLOC(@"SMALL"), YMLOC(@"NORMAL"), YMLOC(@"LARGE"), YMLOC(@"EXTRALARGE"), YMLOC(@"MAX")]), 1) visibleWhenBoolKey:GestureControls] visibleWhenBoolKey:GestureHUD],
             [[YMPicker(YMLOC(@"GESTURE_HUD_POSITION"), YMLOC(@"GESTURE_HUD_POSITION_DESC"), GestureHUDPosition, (@[YMLOC(@"TOP"), YMLOC(@"MIDDLE"), YMLOC(@"BOTTOM")]), 0) visibleWhenBoolKey:GestureControls] visibleWhenBoolKey:GestureHUD], 

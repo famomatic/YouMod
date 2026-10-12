@@ -167,6 +167,7 @@
 #define ShowSpeedSlider @"YouModShowSpeedSlider"
 #define SpeedControlStyle @"YouModSpeedControlStyle" // 0=slider popup(default) 1=button stepper under prev/pause/next
 #define RadioMode @"YouModRadioMode"
+#define VolumeGestureTarget @"YouModVolumeGestureTarget" // 0=system volume(default) 1=app-internal boost (ported from VolumeBoostYT, up to 2000%)
 #define RemoveDarkOverlay @"YouModRemoveDarkOverlay"
 #define RemoveAmbiant @"YouModRemoveAmbiantColors"
 #define HideEndScreenCards @"YouModHideEndScreenCards"

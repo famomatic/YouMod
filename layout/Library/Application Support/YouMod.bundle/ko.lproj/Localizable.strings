@@ -276,6 +276,9 @@
 "GESTURE_BRIGHTNESS" = "밝기";
 "GESTURE_VOLUME" = "볼륨";
 "GESTURE_SPEED" = "재생 속도";
+"VOLUME_GESTURE_TARGET" = "볼륨 제스처 대상";
+"VOLUME_TARGET_SYSTEM" = "시스템 볼륨";
+"VOLUME_TARGET_APP" = "앱 볼륨 (부스트)";
 "GESTURE_NONE" = "없음";
 "GESTURE_HUD" = "제스처 HUD 표시";
 "GESTURE_HUD_DESC" = "밝기, 볼륨, 재생 속도를 조절할 때 화면에 현재 퍼센트(%)를 표시합니다.";

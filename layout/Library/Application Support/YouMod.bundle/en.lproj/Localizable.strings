@@ -276,6 +276,9 @@
 "GESTURE_BRIGHTNESS" = "Brightness";
 "GESTURE_VOLUME" = "Volume";
 "GESTURE_SPEED" = "Playback speed";
+"VOLUME_GESTURE_TARGET" = "Volume gesture controls";
+"VOLUME_TARGET_SYSTEM" = "System volume";
+"VOLUME_TARGET_APP" = "App volume (boost)";
 "GESTURE_NONE" = "None";
 "GESTURE_HUD" = "Show gesture HUD";
 "GESTURE_HUD_DESC" = "Displays the current percentage (%) on the screen when adjusting brightness, volume, or playback speed.";
