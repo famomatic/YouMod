@@ -234,29 +234,33 @@ static BOOL OLEDKeyboardIsDarkMode(UIView *view) {
     return view.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
 }
 
-// Keyboard backgrounds the per-class hooks below don't reach (the backdrop/glass
-// views differ between iOS versions - e.g. iOS 26's glass keyboard). Only ever walks
-// the keyboard's own windows, and only on keyboard show/frame-change notifications,
-// never per layout pass.
-static void YMOLEDPaintKeyboardView(UIView *view, NSUInteger depth) {
-    if (depth > 12) return;
-    NSString *name = NSStringFromClass(view.class);
-    BOOL isBackground = [name containsString:@"Backdrop"] || [name hasPrefix:@"UIKBVisualEffect"]
-        || ([name containsString:@"Glass"] && [name containsString:@"Background"])
-        || [name isEqualToString:@"UIKeyboardDockView"];
-    if (isBackground) {
-        if ([view isKindOfClass:[UIVisualEffectView class]]) ((UIVisualEffectView *)view).effect = nil;
-        view.backgroundColor = [UIColor blackColor];
-    }
-    for (UIView *sub in view.subviews) YMOLEDPaintKeyboardView(sub, depth + 1);
+// iOS 26's keyboard draws its keys as glass/backdrop views. Removing their effects or
+// painting them black (what the per-class hooks below do on older iOS, and what an
+// earlier name-based sweep did here) leaves a solid black keyboard with no visible
+// keys. On iOS 26 only the keyboard's outermost host view is painted, which sits
+// *behind* every key, so the glass simply renders over black.
+static BOOL YMIsGlassKeyboard(void) {
+    static BOOL glass;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        glass = [NSProcessInfo.processInfo isOperatingSystemAtLeastVersion:(NSOperatingSystemVersion){26, 0, 0}];
+    });
+    return glass;
 }
 
-static void YMOLEDPaintKeyboardWindows(void) {
-    if (!YMAppIsDark()) return;
+static void YMOLEDPaintKeyboardHosts(void) {
+    if (!YMIsGlassKeyboard() || !YMAppIsDark()) return;
+    Class hostClass = NSClassFromString(@"UIInputSetHostView");
+    if (!hostClass) return;
     for (UIWindow *window in UIApplication.sharedApplication.windows) {
         NSString *name = NSStringFromClass(window.class);
         if (![name containsString:@"Keyboard"] && ![name containsString:@"TextEffects"]) continue;
-        YMOLEDPaintKeyboardView(window, 0);
+        // UIInputSetContainerView -> UIInputSetHostView: shallow, containers only.
+        for (UIView *container in window.subviews) {
+            for (UIView *host in container.subviews) {
+                if ([host isKindOfClass:hostClass]) host.backgroundColor = [UIColor blackColor];
+            }
+        }
     }
 }
 
@@ -322,6 +326,7 @@ static void YMOLEDPaintKeyboardWindows(void) {
 %hook UIKBVisualEffectView
 - (void)layoutSubviews {
     %orig;
+    if (YMIsGlassKeyboard()) return; // keys are effect views on iOS 26 - see above
     if (OLEDKeyboardIsDarkMode(self)) {
         if ([self respondsToSelector:@selector(setBackgroundEffects:)]) {
             @try { self.backgroundEffects = nil; } @catch (NSException *e) {}
@@ -342,7 +347,7 @@ static void YMOLEDPaintKeyboardWindows(void) {
         NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
         for (NSNotificationName name in @[UIKeyboardWillShowNotification, UIKeyboardDidShowNotification, UIKeyboardDidChangeFrameNotification]) {
             [center addObserverForName:name object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
-                YMOLEDPaintKeyboardWindows();
+                YMOLEDPaintKeyboardHosts();
             }];
         }
     }
