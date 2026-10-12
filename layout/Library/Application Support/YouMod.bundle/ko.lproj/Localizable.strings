@@ -650,3 +650,20 @@
 "ADDED_TO_QUEUE" = "다운로드 대기열에 추가됨 (%lu개 대기)";
 "SAVED_TO_DOWNLOADS" = "다운로드에 저장됨";
 "EMBEDDING_METADATA" = "메타데이터 추가 중...";
+
+// Downloads tab
+"DOWNLOADS" = "다운로드";
+"DOWNLOADS_TAB" = "다운로드";
+"DOWNLOADS_IN_PROGRESS" = "진행 중";
+"DOWNLOADS_DONE" = "다운로드됨";
+"DOWNLOADS_EMPTY" = "아직 다운로드한 항목이 없습니다.\n다운로드한 영상과 오디오가 여기에 표시됩니다.";
+"DOWNLOADS_STORAGE" = "파일 %lu개 · %@";
+"DELETE_DOWNLOAD" = "이 다운로드를 삭제할까요?";
+"DELETE" = "삭제";
+"REMOVE" = "목록에서 제거";
+"RETRY" = "다시 시도";
+"SHARE" = "공유";
+"PLAY" = "재생";
+"SAVE_TO_PHOTOS_ACTION" = "사진 앱에 저장";
+"OPEN_VIDEO" = "영상 열기";
+"COPY_LINK" = "링크 복사";

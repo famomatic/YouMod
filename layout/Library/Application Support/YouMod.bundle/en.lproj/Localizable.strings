@@ -650,3 +650,20 @@
 "ADDED_TO_QUEUE" = "Added to downloads queue (%lu waiting)";
 "SAVED_TO_DOWNLOADS" = "Saved to Downloads";
 "EMBEDDING_METADATA" = "Adding metadata...";
+
+// Downloads tab
+"DOWNLOADS" = "Downloads";
+"DOWNLOADS_TAB" = "Downloads";
+"DOWNLOADS_IN_PROGRESS" = "In progress";
+"DOWNLOADS_DONE" = "Downloaded";
+"DOWNLOADS_EMPTY" = "No downloads yet.\nDownloaded videos and audio appear here.";
+"DOWNLOADS_STORAGE" = "%lu files · %@";
+"DELETE_DOWNLOAD" = "Delete this download?";
+"DELETE" = "Delete";
+"REMOVE" = "Remove";
+"RETRY" = "Retry";
+"SHARE" = "Share";
+"PLAY" = "Play";
+"SAVE_TO_PHOTOS_ACTION" = "Save to Photos";
+"OPEN_VIDEO" = "Open video";
+"COPY_LINK" = "Copy link";

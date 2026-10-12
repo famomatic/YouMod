@@ -1376,9 +1376,9 @@ YMSettingsItem *YMImageSegment(NSString *title, NSString *key, NSArray<UIImage *
 #pragma mark - YMTabOrderViewController
 
 static NSString * const kYMTabIDs[] = {
-    @"home", @"shorts", @"create", @"subscriptions", @"library", @"history", @"gaming", @"sports", @"notifications", @"news", @"music", @"watchlater", @"playlist", @"like", @"live", @"post", @"video", @"movie", @"course", @"minigame", @"fashion", @"learning"
+    @"home", @"shorts", @"create", @"subscriptions", @"library", @"history", @"gaming", @"sports", @"notifications", @"news", @"music", @"watchlater", @"playlist", @"like", @"live", @"post", @"video", @"movie", @"course", @"minigame", @"fashion", @"learning", @"downloads"
 };
-static const NSInteger kYMTabCount = 22;
+static const NSInteger kYMTabCount = 23;
 static const NSInteger kYMTabMaxEnabled = 6;
 static const NSInteger kYMTabMinEnabled = 1;
 
@@ -1433,6 +1433,7 @@ static const void *kYMTabSavedScrollEdgeAppearanceKey = &kYMTabSavedScrollEdgeAp
     if ([tabID isEqualToString:@"minigame"]) return LOC(@"MINIGAME_TAB");
     if ([tabID isEqualToString:@"fashion"]) return LOC(@"FASHION_TAB");
     if ([tabID isEqualToString:@"learning"]) return LOC(@"LEARNING_TAB");
+    if ([tabID isEqualToString:@"downloads"]) return LOC(@"DOWNLOADS_TAB");
     return tabID;
 }
 
@@ -1443,9 +1444,10 @@ static const void *kYMTabSavedScrollEdgeAppearanceKey = &kYMTabSavedScrollEdgeAp
         cachedLoader = [[%c(YTAssetLoader) alloc] initWithBundle:YouModBundle()];
     });
 
-    if ([tabID isEqualToString:@"create"]) {
+    if ([tabID isEqualToString:@"create"] || [tabID isEqualToString:@"downloads"]) {
         UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIImageSymbolWeightMedium];
-        return [[UIImage systemImageNamed:@"plus" withConfiguration:config] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+        NSString *symbol = [tabID isEqualToString:@"create"] ? @"plus" : @"arrow.down.circle";
+        return [[UIImage systemImageNamed:symbol withConfiguration:config] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     }
     NSDictionary *ytIconTypes = @{@"home": @(65), @"shorts": @(769), @"subscriptions": @(66), @"library": @(61)};
     NSDictionary *bundleIcons = @{@"history": @"icons/history", @"gaming": @"icons/gaming", @"sports": @"icons/sports", @"notifications": @"icons/noti", @"news": @"icons/news", @"music": @"icons/music", @"watchlater": @"icons/watchlater", @"playlist": @"icons/playlist", @"like": @"icons/like", @"live": @"icons/live", @"post": @"icons/post", @"video": @"icons/video", @"movie": @"icons/movie", @"course": @"icons/course", @"minigame": @"icons/minigame", @"fashion": @"icons/fashion", @"learning": @"icons/learning"};

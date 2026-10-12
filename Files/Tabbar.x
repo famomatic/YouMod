@@ -1,5 +1,11 @@
 #import "Headers.h"
 #import <objc/runtime.h>
+#import "DownloadQueue.h"
+
+// The Downloads tab is YouMod's own screen, not a YouTube browse page: its pivot
+// item uses this identifier, and taps on it open YMPresentDownloadsViewController.
+static NSString *const YMDownloadsPivotIdentifier = @"FEyoumod_downloads";
+static const int YMDownloadsIconType = 18;
 
 // Remove the tab width cap. -[YTPivotBarView updateTabWidths] gives each tab
 // (bar width / tab count), then clamps it to 105pt whenever the layout style's
@@ -13,6 +19,11 @@
 // Tab icons
 %hook YTAppPivotBarItemStyle
 - (UIImage *)pivotBarItemIconImageWithIconType:(int)type color:(UIColor *)color useNewIcons:(BOOL)isNew selected:(BOOL)isSelected {
+    if (type == YMDownloadsIconType) {
+        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightRegular];
+        UIImage *symbol = [UIImage systemImageNamed:isSelected ? @"arrow.down.circle.fill" : @"arrow.down.circle" withConfiguration:config];
+        return [symbol imageWithTintColor:color ?: UIColor.labelColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+    }
     if (type == 1 || type == 2 || type == 3 || type == 4 || type == 5 || type == 6 || type == 7 || type == 8 || type == 9 || type == 10 || type == 11 || type == 12 || type == 13 || type == 14 || type == 15 || type == 16 || type == 17) {
         NSString *imageName;
         if (type == 1) imageName = isSelected ? @"icons/history_selected" : @"icons/history";
@@ -62,6 +73,7 @@ static NSString *ymPivotIDForTabID(NSString *tabID) {
     if ([tabID isEqualToString:@"minigame"]) return @"FEmini_app_destination";
     if ([tabID isEqualToString:@"fashion"]) return @"UCrpQ4p1Ql_hG8rKXIKM1MOQ";
     if ([tabID isEqualToString:@"learning"]) return @"UCtFRv9O2AHqOZjjynzrv-xg";
+    if ([tabID isEqualToString:@"downloads"]) return YMDownloadsPivotIdentifier;
     return nil;
 }
 
@@ -83,6 +95,7 @@ static NSInteger ymIconTypeForTabID(NSString *tabID) {
     if ([tabID isEqualToString:@"minigame"]) return 15;
     if ([tabID isEqualToString:@"fashion"]) return 16;
     if ([tabID isEqualToString:@"learning"]) return 17;
+    if ([tabID isEqualToString:@"downloads"]) return YMDownloadsIconType;
     return 0;
 }
 
@@ -104,6 +117,7 @@ static NSString *ymTitleForTabID(NSString *tabID) {
     if ([tabID isEqualToString:@"minigame"]) return LOC(@"MINIGAME_TAB");
     if ([tabID isEqualToString:@"fashion"]) return LOC(@"FASHION_TAB");
     if ([tabID isEqualToString:@"learning"]) return LOC(@"LEARNING_TAB");
+    if ([tabID isEqualToString:@"downloads"]) return LOC(@"DOWNLOADS_TAB");
     return nil;
 }
 
@@ -291,7 +305,13 @@ static BOOL isGestureRegistered = NO;
             UIViewController *topVC = YouModTopViewController(nil);
             YMOpenLinkFromClipboard(topVC, YES);
         }];
-        return [UIMenu menuWithTitle:@"" children:@[tabBarAction, openLinkAction]];
+        UIAction *downloadsAction = [UIAction actionWithTitle:LOC(@"DOWNLOADS")
+                                                        image:[UIImage systemImageNamed:@"arrow.down.circle"]
+                                                   identifier:nil
+                                                      handler:^(__kindof UIAction * _Nonnull action) {
+            YMPresentDownloadsViewController(nil);
+        }];
+        return [UIMenu menuWithTitle:@"" children:@[tabBarAction, downloadsAction, openLinkAction]];
     }];
 }
 %end
@@ -315,7 +335,7 @@ static BOOL isTabSelected = NO;
             for (NSDictionary *entry in savedOrder) {
                 if (![entry[@"enabled"] boolValue]) continue;
                 NSString *tabID = entry[@"id"];
-                if ([tabID isEqualToString:@"create"]) continue;
+                if ([tabID isEqualToString:@"create"] || [tabID isEqualToString:@"downloads"]) continue;
                 NSString *pivot = ymPivotIDForTabID(tabID);
                 if (pivot) [pivotIdentifiers addObject:pivot];
             }
@@ -330,6 +350,27 @@ static BOOL isTabSelected = NO;
         [self selectItemWithPivotIdentifier:pivotIdentifiers[tabIndex]];
         isTabSelected = YES;
     }
+}
+// The Downloads tab opens YouMod's screen instead of navigating to a browse page.
+- (void)didTapItemWithRenderer:(YTIPivotBarItemRenderer *)renderer {
+    if ([renderer respondsToSelector:@selector(pivotIdentifier)] && [renderer.pivotIdentifier isEqualToString:YMDownloadsPivotIdentifier]) {
+        YMPresentDownloadsViewController(nil);
+        return;
+    }
+    %orig;
+}
+// The item is built as a browse endpoint, so catch it on the navigation path too.
+- (BOOL)handlePivotBarNavigationCommand:(YTICommand *)command {
+    if ([command respondsToSelector:@selector(browseEndpoint)] && [command.browseEndpoint.browseId isEqualToString:YMDownloadsPivotIdentifier]) {
+        YMPresentDownloadsViewController(nil);
+        return YES;
+    }
+    return %orig;
+}
+// Never let YouTube navigate to the Downloads pseudo-tab (it has no browse page).
+- (void)selectItemWithPivotIdentifier:(NSString *)pivotIdentifier {
+    if ([pivotIdentifier isEqualToString:YMDownloadsPivotIdentifier]) return;
+    %orig;
 }
 // Translucent tab bar
 - (BOOL)isFrostedPivotBarPermitted {

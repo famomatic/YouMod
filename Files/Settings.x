@@ -452,7 +452,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             for (NSDictionary *entry in savedOrder) {
                 if (![entry[@"enabled"] boolValue]) continue;
                 NSString *tabID = entry[@"id"];
-                if ([tabID isEqualToString:@"create"]) continue;
+                if ([tabID isEqualToString:@"create"] || [tabID isEqualToString:@"downloads"]) continue;
                 NSNumber *ytIconType = tabYTIconMap[tabID];
                 if (ytIconType) {
                     UIImage *img = YouModYTIconImage([ytIconType intValue], YES, [UIColor whiteColor]);

@@ -1,6 +1,7 @@
 #import "Headers.h"
 #import "FFmpegKit.h"
 #import "DownloadLibrary.h"
+#import "DownloadQueue.h"
 #import <AVFoundation/AVFoundation.h>
 #import <Photos/Photos.h>
 #import <math.h>
@@ -1032,44 +1033,6 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
 
 NSString *const YMDownloadQueueDidChangeNotification = @"YMDownloadQueueDidChangeNotification";
 
-typedef NS_ENUM(NSInteger, YMDownloadJobState) {
-    YMDownloadJobStateQueued,
-    YMDownloadJobStateRunning,
-    YMDownloadJobStateFailed,
-};
-
-@interface YMDownloadJob : NSObject
-@property (nonatomic, copy) NSString *identifier;
-@property (nonatomic, copy) NSString *videoID;
-@property (nonatomic, copy) NSString *title;
-@property (nonatomic, copy) NSString *author;
-@property (nonatomic, copy) NSString *fileName;
-@property (nonatomic, copy) NSString *formatSummary;
-@property (nonatomic, strong) NSURL *thumbnailURL;
-@property (nonatomic, strong) YouModMediaFormat *videoFormat; // nil for audio-only
-@property (nonatomic, strong) YouModMediaFormat *audioFormat;
-@property (nonatomic, assign) NSInteger audioOutput;
-@property (nonatomic, assign) unsigned long long durationMs;
-@property (nonatomic, weak) UIViewController *presenter;
-@property (nonatomic, assign) YMDownloadJobState state;
-@property (nonatomic, assign) float progress;
-@property (nonatomic, copy) NSString *status;
-@property (nonatomic, copy) NSString *errorMessage;
-@property (nonatomic, readonly) BOOL isVideo;
-@end
-
-@interface YMDownloadQueue : NSObject
-+ (instancetype)sharedQueue;
-@property (nonatomic, readonly) NSArray<YMDownloadJob *> *jobs; // running, queued and failed
-- (void)enqueue:(YMDownloadJob *)job;
-- (void)cancelJob:(YMDownloadJob *)job;
-- (void)retryJob:(YMDownloadJob *)job;
-- (void)removeJob:(YMDownloadJob *)job;
-- (void)coordinatorReportedProgress:(float)progress status:(NSString *)status;
-- (void)coordinatorFinishedWithFileURL:(NSURL *)fileURL isVideo:(BOOL)isVideo presenter:(UIViewController *)presenter;
-- (void)coordinatorFailedWithMessage:(NSString *)message;
-- (void)coordinatorCancelled;
-@end
 
 static NSString *YouModAudioOutputExtension(NSInteger output) {
     switch (output) {
@@ -2207,6 +2170,27 @@ static NSString *YouModAudioOutputExtension(NSInteger output) {
 
 @end
 
+// Used by the Downloads screen (DownloadsViewController.x).
+void YMDownloadShareFile(NSURL *fileURL, UIViewController *presenter) {
+    YouModShareFile(fileURL, presenter);
+}
+
+void YMDownloadSaveVideoToPhotos(NSURL *fileURL, UIViewController *presenter) {
+    if (!YouModVideoFileCanSaveToPhotos(fileURL)) {
+        YouModSendError(LOC(@"CANNOT_SAVE_TO_PHOTOS"));
+        return;
+    }
+    YouModSaveVideoToPhotos(fileURL, presenter, ^(BOOL success, NSError *error) {
+        if (success) YouModSendSuccess(LOC(@"SAVED_TO_PHOTOS"));
+        else YouModSendError(error.localizedDescription ?: LOC(@"CANNOT_SAVE_TO_PHOTOS"));
+    });
+}
+
+void YMDownloadShowToast(NSString *message, BOOL error) {
+    if (error) YouModSendError(message);
+    else YouModSendSuccess(message);
+}
+
 static NSString *YouModFileNameFromTemplate(NSString *title, NSString *author, NSString *videoID, NSString *quality) {
     NSString *name = title.length ? title : @"YouTube Video";
     switch (INTFORVAL(DownloadFileNameTemplate)) {
@@ -2581,6 +2565,9 @@ static void YouModShowDownloadManager(YTPlayerViewController *player, UIViewCont
     }]];
     [items addObject:[YouModMenuItem itemWithTitle:LOC(@"COPY_VID_INFO") subtitle:nil icon:YouModYTIconImage(250, NO, nil) handler:^{
         YouModShowCopyVideoInfoSheet(player, presenter, sender);
+    }]];
+    [items addObject:[YouModMenuItem itemWithTitle:LOC(@"DOWNLOADS") subtitle:nil icon:YouModYTIconImage(57, NO, nil) handler:^{
+        YMPresentDownloadsViewController(presenter);
     }]];
     YouModPresentMenu(player, items, presenter, sender);
 }
