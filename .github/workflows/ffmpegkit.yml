@@ -1,0 +1,70 @@
+name: Build FFmpegKit (full GPL)
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'ffmpeg-kit-next tag to build'
+        required: true
+        default: 'v9.0.0'
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build FFmpegKit full-gpl (ios-arm64)
+    runs-on: macos-latest
+    timeout-minutes: 355
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout YouMod
+        uses: actions/checkout@v7
+
+      - name: Select Xcode 26
+        run: |
+          xcode="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)"
+          if [ -z "$xcode" ]; then
+            echo "::error::Xcode 26 is required by ffmpeg-kit-next but is not installed on this runner"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      - name: Build FFmpegKit
+        env:
+          FFMPEGKIT_TAG: ${{ inputs.tag }}
+        run: bash tools/build-ffmpegkit.sh
+
+      - name: Package frameworks
+        run: |
+          cd modules/ffmpeg
+          zip -qry "${{ github.workspace }}/FFmpegKit-full-gpl-ios-arm64.zip" .
+          du -sh "${{ github.workspace }}/FFmpegKit-full-gpl-ios-arm64.zip"
+
+      - name: Publish release asset
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ffmpegkit-${{ inputs.tag }}-full-gpl
+          name: FFmpegKit ${{ inputs.tag }} full-gpl (ios-arm64)
+          body: |
+            FFmpegKit (ffmpeg-kit-next ${{ inputs.tag }}) for iOS arm64, built with --enable-gpl --enable-lib-all.
+            Licensed under GPL-3.0. Source: https://github.com/arthenica/ffmpeg-kit-next/tree/${{ inputs.tag }}
+            Consumed by the YouMod build workflows via tools/fetch-ffmpegkit.sh.
+          files: FFmpegKit-full-gpl-ios-arm64.zip
+          prerelease: true
+          make_latest: false
+
+      - name: Upload build log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ffmpegkit-build-log
+          path: .cache/ffmpeg-kit-next/build.log
+          if-no-files-found: ignore

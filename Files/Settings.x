@@ -1,6 +1,7 @@
 // Settings.x
 // Thanks to the original codes from YTUHD by PoomSmart - https://github.com/PoomSmart/YTUHD/blob/0e735616fd8fc6546339da7fdc78466f16f23ffd/Settings.x
 #import "Headers.h"
+#import "FFmpegKit.h"
 
 #define TweakName @"YouMod"
 
@@ -202,6 +203,20 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             [[YMTextSegment(YMLOC(@"AUDIO_TRACK"), AudioPreferIndex, (@[YMLOC(@"SHOW_OPTIONS"), YMLOC(@"ORIGINAL"), YMLOC(@"ENGLISH")]), 0) visibleWhenKey:DownloadMethod equals:0] visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
             [YMPicker(YMLOC(@"DOWNLOAD_METHOD"), YMLOC(@"DOWNLOAD_METHOD_DESC"), DownloadMethod, (@[YMLOC(@"METHOD_DIRECT"), YMLOC(@"METHOD_SERVER"), YMLOC(@"METHOD_ONDEVICE")]), 0) visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
             [[YMPicker(YMLOC(@"DOWNLOAD_SERVER"), YMLOC(@"CHOOSE_DOWNLOAD_SERVER"), DownloadServerIndex, (@[YMLOC(@"SERVER_EUROPRE1"), YMLOC(@"SERVER_ASIA1")]), 0) visibleWhenKey:DownloadMethod equals:1] visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
+            [YMHeader(@"FFmpeg") visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
+            [YMToggle(YMLOC(@"USE_FFMPEG"), YMLOC(@"USE_FFMPEG_DESC"), UseFFmpeg) visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
+            [[YMPicker(YMLOC(@"AUDIO_OUTPUT_FORMAT"), YMLOC(@"AUDIO_OUTPUT_FORMAT_DESC"), AudioOutputFormat, (@[YMLOC(@"ASK_EVERY_TIME"), @"M4A (AAC)", @"MP3 (320 kbps)", @"Opus", @"FLAC", @"WAV"]), 0) visibleWhenAnyBoolKey:@[UseFFmpeg]] visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
+            [[YMTextSegment(YMLOC(@"FFMPEG_CONTAINER"), FFmpegVideoContainer, (@[@"MP4", @"MKV"]), 0) visibleWhenAnyBoolKey:@[UseFFmpeg]] visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
+            [[YMToggle(YMLOC(@"FFMPEG_PHOTOS_COMPAT"), YMLOC(@"FFMPEG_PHOTOS_COMPAT_DESC"), FFmpegPhotosCompatible) visibleWhenAnyBoolKey:@[UseFFmpeg]] visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
+            [YMAction(YMLOC(@"FFMPEG_STATUS"), YMLOC(@"FFMPEG_STATUS_DESC"), ^(UIViewController *vc) {
+                NSString *status = YMFFmpegAvailable() ? YMLOC(@"FFMPEG_READY") : YMLOC(@"FFMPEG_UNAVAILABLE");
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:status message:YMFFmpegDiagnostics() preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:YMLOC(@"COPY") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+                    UIPasteboard.generalPasteboard.string = YMFFmpegDiagnostics();
+                }]];
+                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+                [vc presentViewController:alert animated:YES completion:nil];
+            }) visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
             YMToggle(YMLOC(@"DOWNLOAD_COMMENT"), YMLOC(@"DOWNLOAD_COMMENT_DESC"), DownloadComment),
             YMToggle(YMLOC(@"DOWNLOAD_POST"), YMLOC(@"DOWNLOAD_POST_DESC"), DownloadPost),
     ];
@@ -669,6 +684,7 @@ void YMRegisterDefaults(void) {
             GestureControls: @YES, // keeps the default edge-zone activation area, so the
                                     // center strip stays free for the fullscreen-exit gesture
             DownloadManager: @YES,
+            UseFFmpeg: @YES,
             SBButtonKey: @YES,
             DisableHints: @YES,
             RewindSeconds: @10.0,

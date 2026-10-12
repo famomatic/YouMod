@@ -89,6 +89,12 @@ jobs:
       - name: Fix Theos od broken pipe issue
         run: sed -i '' 's/od -c "$i" | head/od -c "$i" 2>\/dev\/null | head/g' $THEOS/bin/convert_xml_plist.sh || true
 
+      - name: Fetch FFmpegKit (full GPL)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FFMPEGKIT_RELEASE_REPO: ${{ github.repository }}
+        run: bash YouMod/tools/fetch-ffmpegkit.sh
+
       - name: Build YouMod
         run: |
           cd YouMod

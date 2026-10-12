@@ -86,6 +86,10 @@
 #define DownloadFix @"YouModDownloadFix"
 #define DownloadServerIndex @"YouModDownloadServerIndex"
 #define SABRDownload @"YouModSABRDownload"
+#define UseFFmpeg @"YouModUseFFmpeg"                       // allow FFmpeg-only formats (VP9/AV1/Opus, >1080p, HDR)
+#define FFmpegVideoContainer @"YouModFFmpegVideoContainer" // 0 = MP4, 1 = MKV for non-H.264 merges
+#define FFmpegPhotosCompatible @"YouModFFmpegPhotosCompatible" // re-encode VP9/AV1/Opus to H.264/HEVC + AAC
+#define AudioOutputFormat @"YouModAudioOutputFormat"       // 0 = ask, 1 = M4A, 2 = MP3, 3 = Opus, 4 = FLAC, 5 = WAV
 #define DownloadMethod @"YouModDownloadMethod" // index into the "Download method" picker
 #define DownloadMethodDirect 0   // YouTube's built-in stream URLs
 #define DownloadMethodServer 1   // external server (triggerSilentDownload…)
@@ -642,6 +646,8 @@ typedef NS_ENUM(NSUInteger, GestureSection) {
 - (int)fps;
 - (YTIAudioTrack *)audioTrack;
 - (int)itag;
+- (int)bitrate;
+- (int)averageBitrate;
 @end
 
 @interface YTIFormattedString (YouMod)

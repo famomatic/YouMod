@@ -285,11 +285,20 @@ jobs:
         if: ${{ inputs.youquality }}
         run: git clone --quiet --depth=1 https://github.com/PoomSmart/YouQuality.git
 
+      - name: Fetch FFmpegKit (full GPL)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FFMPEGKIT_RELEASE_REPO: ${{ github.repository }}
+        run: bash YouMod/tools/fetch-ffmpegkit.sh
+
+      # FFmpegKit is kept out of the deb here: cyan turns every .framework it finds
+      # in a deb into a load command on YouTube's executable, which would load all
+      # of FFmpeg at every launch. It is added after injection instead.
       - name: Build YouMod
         run: |
           cd YouMod
           echo "YOUMOD_VERSION=$(grep '^Version:' control | cut -d ' ' -f2)" >> $GITHUB_ENV
-          make clean package DEBUG=0 FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+          make clean package DEBUG=0 FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless YOUMOD_BUNDLE_FFMPEG=0
           mv packages/*.deb ${{ github.workspace }}/youmod.deb
         
       - name: Build YouPiP
@@ -400,6 +409,25 @@ jobs:
           done
           
           cyan -i youtube.ipa -o YouMod_${{ env.YT_VERSION }}_v${{ env.YOUMOD_VERSION }}.ipa -uwef $tweaks -n "${{ inputs.display_name }}" -b ${{ inputs.bundle_id }}
+
+      # Copied in without load commands - YouMod dlopens FFmpegKit only when a
+      # download needs it. In the app's Frameworks folder every signer re-signs it.
+      - name: Add FFmpegKit frameworks
+        run: |
+          if [ ! -f YouMod/modules/ffmpeg/ffmpegkit.framework/ffmpegkit ]; then
+            echo "::warning::No FFmpegKit frameworks - IPA built without bundled FFmpeg (run the 'Build FFmpegKit (full GPL)' workflow)"
+            exit 0
+          fi
+          ipa="YouMod_${{ env.YT_VERSION }}_v${{ env.YOUMOD_VERSION }}.ipa"
+          rm -rf ipawork && mkdir ipawork && cd ipawork
+          unzip -q "../$ipa"
+          app="$(ls -d Payload/*.app | head -n 1)"
+          mkdir -p "$app/Frameworks"
+          cp -R ../YouMod/modules/ffmpeg/*.framework "$app/Frameworks/"
+          rm "../$ipa"
+          zip -qry "../$ipa" Payload -x '*/.*'
+          cd .. && rm -rf ipawork
+          ls -lh "$ipa"
 
       - name: Create a Draft Release
         uses: softprops/action-gh-release@v3

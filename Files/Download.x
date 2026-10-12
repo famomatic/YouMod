@@ -1,4 +1,5 @@
 #import "Headers.h"
+#import "FFmpegKit.h"
 #import <AVFoundation/AVFoundation.h>
 #import <Photos/Photos.h>
 #import <math.h>
@@ -38,6 +39,7 @@
 @property (nonatomic, assign) int fps;
 @property (nonatomic, assign) int itag;
 @property (nonatomic, assign) int resolution;
+@property (nonatomic, assign) int bitrate;
 @property (nonatomic, assign) BOOL video;
 @end
 
@@ -103,6 +105,13 @@ typedef void (^YouModRangeDownloadProgress)(unsigned long long completedBytes);
 @property (nonatomic, copy) NSString *baseProgressTitle;
 @property (nonatomic, assign) NSTimeInterval downloadStartTime;
 @property (nonatomic, copy) void (^downloadCompletionBlock)(NSURL *localURL, NSString *errorMsg);
+// Formats of the download in progress - decide between the AVFoundation and FFmpeg paths.
+@property (nonatomic, strong) YouModMediaFormat *currentVideoFormat;
+@property (nonatomic, strong) YouModMediaFormat *currentAudioFormat;
+// Audio output for the next audio-only download (AudioOutputFormat values 1-5), then
+// the one in use. 0/unset means M4A.
+@property (nonatomic, assign) NSInteger pendingAudioOutput;
+@property (nonatomic, assign) NSInteger audioOutput;
 + (instancetype)sharedCoordinator;
 - (void)startVideoDownloadWithVideoFormat:(YouModMediaFormat *)videoFormat audioFormat:(YouModMediaFormat *)audioFormat fileName:(NSString *)fileName presenter:(UIViewController *)presenter videoID:(NSString *)vidID;
 - (void)startAudioDownloadWithAudioFormat:(YouModMediaFormat *)audioFormat fileName:(NSString *)fileName presenter:(UIViewController *)presenter videoID:(NSString *)vidID;
@@ -571,14 +580,34 @@ static BOOL YouModPathExtensionIsPhotosVideo(NSString *extension) {
     return [@[@"mp4"] containsObject:lower];
 }
 
+// Codec family from a stream mimeType such as `video/webm; codecs="vp9"`.
+static NSString *YouModCodecName(NSString *mimeType) {
+    NSString *lower = mimeType.lowercaseString;
+    if ([lower containsString:@"av01"]) return @"AV1";
+    if ([lower containsString:@"vp9"] || [lower containsString:@"vp09"]) return @"VP9";
+    if ([lower containsString:@"avc1"]) return @"H.264";
+    if ([lower containsString:@"opus"]) return @"Opus";
+    if ([lower containsString:@"mp4a"]) return @"AAC";
+    return nil;
+}
+
+// VP9/AV1/Opus, >1080p and HDR streams are only offered when FFmpegKit is
+// bundled, because only FFmpeg can mux/convert them.
+static BOOL YouModFFmpegFormatsEnabled(void) {
+    return IS_ENABLED(UseFFmpeg) && YMFFmpegInstalled();
+}
+
 static NSString *YouModMimeDetail(NSString *mimeType) {
     NSString *lower = mimeType.lowercaseString;
-    if ([lower containsString:@"mp4"]) return @"MP4";
-    return mimeType;
+    NSString *container = [lower containsString:@"webm"] ? @"WebM" : ([lower containsString:@"mp4"] ? @"MP4" : nil);
+    NSString *codec = YouModCodecName(mimeType);
+    if (container && codec) return [NSString stringWithFormat:@"%@ · %@", container, codec];
+    return container ?: mimeType;
 }
 
 static NSString *YouModFileExtensionForFormat(YouModMediaFormat *format) {
     NSString *lower = format.mimeType.lowercaseString;
+    if ([lower containsString:@"webm"]) return @"webm";
     if ([lower containsString:@"mp4a"]) return @"m4a";
     if ([lower containsString:@"mp4"]) return @"mp4";
     return nil;
@@ -590,9 +619,22 @@ static BOOL YouModFormatLooksMP4Family(YouModMediaFormat *format) {
     return [mime containsString:@"mp4"] || [mime containsString:@"mp4a"] || [@[@"mp4", @"mp4a"] containsObject:extension];
 }
 
+// AVFoundation can only remux H.264 video with AAC audio; anything else needs FFmpeg.
+// Missing format info (older call sites) keeps the original AVFoundation behavior.
+static BOOL YouModFormatsMergeWithAVFoundation(YouModMediaFormat *videoFormat, YouModMediaFormat *audioFormat) {
+    if (!videoFormat || !audioFormat) return YES;
+    return [YouModCodecName(videoFormat.mimeType) isEqualToString:@"H.264"]
+        && [YouModCodecName(audioFormat.mimeType) isEqualToString:@"AAC"];
+}
+
+// Opt-in: re-encode VP9/AV1 video and Opus audio so the result can go to Photos.
+static BOOL YouModNeedsPhotosTranscode(YouModMediaFormat *videoFormat, YouModMediaFormat *audioFormat) {
+    return IS_ENABLED(FFmpegPhotosCompatible) && !YouModFormatsMergeWithAVFoundation(videoFormat, audioFormat);
+}
+
 static NSString *YouModMergedVideoOutputExtension(YouModMediaFormat *videoFormat, YouModMediaFormat *audioFormat) {
-    if (YouModFormatLooksMP4Family(videoFormat) && YouModFormatLooksMP4Family(audioFormat)) return @"mp4";
-    return nil;
+    if (YouModFormatsMergeWithAVFoundation(videoFormat, audioFormat) || YouModNeedsPhotosTranscode(videoFormat, audioFormat)) return @"mp4";
+    return INTFORVAL(FFmpegVideoContainer) == 1 ? @"mkv" : @"mp4";
 }
 
 static BOOL YouModVideoFileCanUseAVFoundation(NSURL *fileURL) {
@@ -612,8 +654,14 @@ static NSString *YouModFormatSubtitle(YouModMediaFormat *format, BOOL video) {
         if (size.length) [parts addObject:size];
         return [parts componentsJoinedByString:@" - "];
     }
+    NSMutableArray *parts = [NSMutableArray array];
     NSString *cut = [[format.idp componentsSeparatedByString:@"."] firstObject];
-    return cut;
+    if (cut.length) [parts addObject:cut];
+    NSString *codec = YouModCodecName(format.mimeType);
+    if (codec.length) [parts addObject:codec];
+    NSString *size = YouModByteCount(format.contentLength);
+    if (size.length) [parts addObject:size];
+    return [parts componentsJoinedByString:@" - "];
 }
 
 static YTIPlayerResponse *YouModPlayerDataForPlayer(YTPlayerViewController *player) {
@@ -669,8 +717,14 @@ static YouModMediaFormat *YouModMediaFormatFromStream(YTIFormatStream *stream, B
     BOOL typeMatches = video ? ([lowerMime containsString:@"video/"]) : ([lowerMime containsString:@"audio/"]);
     if (!typeMatches) return nil;
 
+    BOOL ffmpeg = YouModFFmpegFormatsEnabled();
     BOOL mimeLooksMP4 = [lowerMime containsString:@"mp4"] && ([lowerMime containsString:@"avc1"] || ([lowerMime containsString:@"mp4a"] && stream.itag == 140));
-    if (mimeType.length && !mimeLooksMP4) return nil;
+    if (mimeType.length && !mimeLooksMP4) {
+        NSString *codec = YouModCodecName(mimeType);
+        BOOL audioCodec = [codec isEqualToString:@"Opus"] || [codec isEqualToString:@"AAC"];
+        BOOL ffmpegCanHandle = codec && (video ? !audioCodec : audioCodec);
+        if (!ffmpeg || !ffmpegCanHandle) return nil;
+    }
 
     YouModMediaFormat *format = [YouModMediaFormat new];
     format.source = stream;
@@ -678,11 +732,12 @@ static YouModMediaFormat *YouModMediaFormatFromStream(YTIFormatStream *stream, B
     format.urlString = YouModURLStringWithCPN(url);
     format.mimeType = mimeType;
     int height = stream.height;
-    if (video && height > 1080) return nil;
+    if (video && height > 1080 && !ffmpeg) return nil;
     format.resolution = height;
     format.fps = stream.fps;
     format.qualityLabel = stream.qualityLabel;
-    if ([stream.qualityLabel hasSuffix:@"HDR"]) return nil;
+    if ([stream.qualityLabel hasSuffix:@"HDR"] && !ffmpeg) return nil;
+    format.bitrate = stream.averageBitrate ?: stream.bitrate;
     if (!video) {
         YTIAudioTrack *audio = stream.audioTrack;
         NSString *audioidp = audio.id_p;
@@ -691,6 +746,14 @@ static YouModMediaFormat *YouModMediaFormatFromStream(YTIFormatStream *stream, B
             if (INTFORVAL(AudioPreferIndex) == 2 && ![audioidp hasPrefix:@"en"]) return nil;
             format.qualityLabel = audio.displayName;
             format.idp = audioidp;
+        }
+        // Single-language videos have no track name; label by codec and bitrate so
+        // the AAC/Opus choices FFmpeg unlocks are distinguishable.
+        if (format.qualityLabel.length == 0) {
+            NSString *codec = YouModCodecName(mimeType) ?: @"Audio";
+            format.qualityLabel = format.bitrate > 0 ? [NSString stringWithFormat:@"%@ %d kbps", codec, format.bitrate / 1000] : codec;
+        } else if (ffmpeg) {
+            format.qualityLabel = [NSString stringWithFormat:@"%@ (%@)", format.qualityLabel, YouModCodecName(mimeType) ?: @"Audio"];
         }
     }
     format.contentLength = stream.contentLength;
@@ -946,6 +1009,16 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
     }
 }
 
+static NSString *YouModAudioOutputExtension(NSInteger output) {
+    switch (output) {
+        case 2: return @"mp3";
+        case 3: return @"opus";
+        case 4: return @"flac";
+        case 5: return @"wav";
+        default: return @"m4a";
+    }
+}
+
 @implementation YouModDownloadCoordinator
 
 + (instancetype)sharedCoordinator {
@@ -1030,6 +1103,7 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
     [self.rangeDownloader cancel];
     [self.exporter cancelExport];
     [YMSABR cancelCurrent];
+    YMFFmpegCancel();
     
     self.task = nil;
     self.metadataTask = nil;
@@ -1186,6 +1260,8 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
 
 - (void)startDirectVideoDownloadWithVideoFormat:(YouModMediaFormat *)videoFormat audioFormat:(YouModMediaFormat *)audioFormat fileName:(NSString *)fileName presenter:(UIViewController *)presenter videoID:(NSString *)vidID {
     [self cleanupTemporaryFiles];
+    self.currentVideoFormat = videoFormat;
+    self.currentAudioFormat = audioFormat;
     // On-device SABR path. Checked first: on modern YouTube the format URLs are empty
     // (media flows via SABR), so the URL check below would otherwise abort.
     if (INTFORVAL(DownloadMethod) == DownloadMethodOnDevice) {
@@ -1268,7 +1344,7 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
             }
             self.videoTempURL = videoURL; // so cleanupTemporaryFiles removes them afterwards
             self.audioTempURL = audioURL;
-            [self mergeVideoURL:videoURL audioURL:audioURL fileName:fileName outputExtension:@"mp4" durationMs:durationMs presenter:presenter];
+            [self mergeVideoURL:videoURL audioURL:audioURL fileName:fileName outputExtension:YouModMergedVideoOutputExtension(videoFormat, audioFormat) durationMs:durationMs presenter:presenter];
         }];
 }
 
@@ -1283,7 +1359,7 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
     self.totalBytes = audioFormat.contentLength;
     [self showProgressWithTitle:LOC(@"DOWNLOADING_AUDIO") presenter:presenter];
 
-    NSURL *finalURL = YouModUniqueFileURL(fileName, @"m4a");
+    NSURL *finalURL = YouModUniqueFileURL(fileName, YouModAudioOutputExtension(self.audioOutput));
     __weak typeof(self) weakSelf = self;
     [YMSABR downloadAudioItag:audioFormat.itag
         progress:^(float fraction, unsigned long long bytesDownloaded) {
@@ -1299,7 +1375,11 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
                 return;
             }
             self.audioTempURL = audioURL; // so cleanupTemporaryFiles removes it afterwards
-            [self exportSABRAudioURL:audioURL toURL:finalURL presenter:presenter];
+            if ([self audioNeedsFFmpeg]) {
+                [self convertAudioURL:audioURL toURL:finalURL durationMs:audioFormat.durationMs presenter:presenter];
+            } else {
+                [self exportSABRAudioURL:audioURL toURL:finalURL presenter:presenter];
+            }
         }];
 }
 
@@ -1342,6 +1422,10 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
 
 - (void)startDirectAudioDownloadWithAudioFormat:(YouModMediaFormat *)audioFormat fileName:(NSString *)fileName presenter:(UIViewController *)presenter videoID:(NSString *)vidID {
     [self cleanupTemporaryFiles];
+    self.currentVideoFormat = nil;
+    self.currentAudioFormat = audioFormat;
+    self.audioOutput = self.pendingAudioOutput > 0 ? self.pendingAudioOutput : 1;
+    self.pendingAudioOutput = 0;
     // On-device SABR path. Checked first: on modern YouTube the format URLs are empty
     // (media flows via SABR), so the URL check below would otherwise abort.
     if (INTFORVAL(DownloadMethod) == DownloadMethodOnDevice) {
@@ -1359,9 +1443,9 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
     self.completedBytes = 0;
     self.totalBytes = audioFormat.contentLength;
 
-    NSURL *finalURL = YouModUniqueFileURL(fileName, @"m4a");
+    NSURL *finalURL = YouModUniqueFileURL(fileName, YouModAudioOutputExtension(self.audioOutput));
     NSString *tempFileName = [NSString stringWithFormat:@"Temp_%@", fileName];
-    NSURL *downloadURL = YouModUniqueFileURL(tempFileName, @"m4a");
+    NSURL *downloadURL = YouModUniqueFileURL(tempFileName, YouModFileExtensionForFormat(audioFormat) ?: @"m4a");
     self.audioTempURL = downloadURL;
     if (INTFORVAL(DownloadMethod) == DownloadMethodServer) {
         [self triggerSilentDownloadWithQuality:nil isAudio:YES videoID:vidID presenter:presenter];
@@ -1383,6 +1467,13 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
             return;
         }
         
+        if ([self audioNeedsFFmpeg]) {
+            // -t (the stream's real duration) does what the half-length trim below
+            // does for the AVFoundation path.
+            self.audioTempURL = fileURL;
+            [self convertAudioURL:fileURL toURL:finalURL durationMs:audioFormat.durationMs presenter:presenter];
+            return;
+        }
         [self trimAudioToHalfLengthAtURL:fileURL toURL:finalURL completion:^(NSError *trimError) {
             [[NSFileManager defaultManager] removeItemAtURL:fileURL error:nil];
             if (self.cancelled) return;
@@ -1442,11 +1533,132 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
     NSURL *outputURL = YouModUniqueFileURL(fileName, outputExtension.length ? outputExtension : @"mp4");
     if (durationMs == 0) durationMs = YouModDurationMsForURL(videoURL);
 
-    if (YouModVideoFileCanUseAVFoundation(outputURL)) {
+    BOOL avFoundationCanMerge = YouModFormatsMergeWithAVFoundation(self.currentVideoFormat, self.currentAudioFormat)
+        && YouModVideoFileCanUseAVFoundation(outputURL);
+    if (avFoundationCanMerge && !YouModNeedsPhotosTranscode(self.currentVideoFormat, self.currentAudioFormat)) {
         [self mergeVideoWithAVFoundationVideoURL:videoURL audioURL:audioURL outputURL:outputURL durationMs:durationMs presenter:presenter fallbackError:nil];
+    } else if (YMFFmpegAvailable()) {
+        [self mergeVideoWithFFmpegVideoURL:videoURL audioURL:audioURL outputURL:outputURL durationMs:durationMs presenter:presenter];
     } else {
-        [self failWithError:[NSError errorWithDomain:@"YouMod" code:16 userInfo:@{NSLocalizedDescriptionKey: @"Cannot download audio from this stream"}]];
+        [self failWithError:[NSError errorWithDomain:@"YouMod" code:16 userInfo:@{NSLocalizedDescriptionKey: LOC(@"FFMPEG_UNAVAILABLE")}]];
     }
+}
+
+- (void)mergeVideoWithFFmpegVideoURL:(NSURL *)videoURL audioURL:(NSURL *)audioURL outputURL:(NSURL *)outputURL durationMs:(unsigned long long)durationMs presenter:(UIViewController *)presenter {
+    YouModMediaFormat *videoFormat = self.currentVideoFormat;
+    YouModMediaFormat *audioFormat = self.currentAudioFormat;
+    BOOL transcode = YouModNeedsPhotosTranscode(videoFormat, audioFormat);
+    BOOL mp4 = [outputURL.pathExtension.lowercaseString isEqualToString:@"mp4"];
+
+    NSMutableArray *args = [@[@"-y", @"-i", videoURL.path, @"-i", audioURL.path, @"-map", @"0:v:0", @"-map", @"1:a:0"] mutableCopy];
+    if (durationMs > 0) [args addObjectsFromArray:@[@"-t", [NSString stringWithFormat:@"%.3f", durationMs / 1000.0]]];
+    if (transcode) {
+        // Photos needs H.264/HEVC + AAC. VideoToolbox encodes in hardware; HEVC above
+        // 1080p, where H.264 levels top out. Output is 8-bit, so HDR sources are not
+        // tone-mapped and will look flat.
+        if ([YouModCodecName(videoFormat.mimeType) isEqualToString:@"H.264"]) {
+            [args addObjectsFromArray:@[@"-c:v", @"copy"]];
+        } else {
+            BOOL hevc = videoFormat.resolution > 1080;
+            long long kbps = videoFormat.bitrate > 0 ? (long long)(videoFormat.bitrate * 1.5 / 1000.0) : (hevc ? 20000 : 8000);
+            kbps = MAX(kbps, 2000);
+            [args addObjectsFromArray:@[@"-c:v", hevc ? @"hevc_videotoolbox" : @"h264_videotoolbox",
+                                        @"-b:v", [NSString stringWithFormat:@"%lldk", kbps],
+                                        @"-pix_fmt", @"yuv420p"]];
+            if (hevc) [args addObjectsFromArray:@[@"-tag:v", @"hvc1"]];
+        }
+        if ([YouModCodecName(audioFormat.mimeType) isEqualToString:@"AAC"]) {
+            [args addObjectsFromArray:@[@"-c:a", @"copy"]];
+        } else {
+            [args addObjectsFromArray:@[@"-c:a", @"aac", @"-b:a", @"256k"]];
+        }
+    } else {
+        [args addObjectsFromArray:@[@"-c", @"copy"]];
+    }
+    [args addObjectsFromArray:@[@"-shortest", @"-avoid_negative_ts", @"make_zero"]];
+    if (mp4) [args addObjectsFromArray:@[@"-movflags", @"+faststart"]];
+    [args addObject:outputURL.path];
+
+    NSString *title = transcode ? LOC(@"CONVERTING_VIDEO") : LOC(@"MERGING_VID");
+    [self updateProgressTitle:title progress:transcode ? 0.0f : 0.985f];
+    __weak typeof(self) weakSelf = self;
+    YMFFmpegRun(args, durationMs, ^(float fraction) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self || self.cancelled || !transcode) return;
+        [self updateProgressTitle:title progress:fraction];
+    }, ^(BOOL success, BOOL cancelled, NSString *errorMessage) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self || self.cancelled || cancelled) return;
+        if (success) {
+            [self completeWithFileURL:outputURL isVideo:YES presenter:presenter];
+            return;
+        }
+        [NSFileManager.defaultManager removeItemAtURL:outputURL error:nil];
+        NSError *error = [NSError errorWithDomain:@"YouMod" code:17 userInfo:@{NSLocalizedDescriptionKey: errorMessage ?: LOC(@"DOWNLOAD_FAILED")}];
+        if (YouModFormatsMergeWithAVFoundation(videoFormat, audioFormat) && mp4) {
+            [self mergeVideoWithAVFoundationVideoURL:videoURL audioURL:audioURL outputURL:outputURL durationMs:durationMs presenter:presenter fallbackError:error];
+        } else {
+            [self failWithError:error];
+        }
+    });
+}
+
+// Audio-only output needs FFmpeg for anything but AAC into M4A.
+- (BOOL)audioNeedsFFmpeg {
+    if (self.audioOutput > 1) return YES;
+    NSString *codec = YouModCodecName(self.currentAudioFormat.mimeType);
+    return codec != nil && ![codec isEqualToString:@"AAC"];
+}
+
+- (void)convertAudioURL:(NSURL *)inputURL toURL:(NSURL *)outputURL durationMs:(unsigned long long)durationMs presenter:(UIViewController *)presenter {
+    if (!YMFFmpegAvailable()) {
+        [self failWithError:[NSError errorWithDomain:@"YouMod" code:18 userInfo:@{NSLocalizedDescriptionKey: LOC(@"FFMPEG_UNAVAILABLE")}]];
+        return;
+    }
+    NSString *sourceCodec = YouModCodecName(self.currentAudioFormat.mimeType);
+    NSMutableArray *args = [@[@"-y", @"-i", inputURL.path, @"-vn"] mutableCopy];
+    if (durationMs > 0) [args addObjectsFromArray:@[@"-t", [NSString stringWithFormat:@"%.3f", durationMs / 1000.0]]];
+    switch (self.audioOutput) {
+        case 2: // MP3
+            [args addObjectsFromArray:@[@"-c:a", @"libmp3lame", @"-b:a", @"320k", @"-id3v2_version", @"3"]];
+            break;
+        case 3: // Opus
+            if ([sourceCodec isEqualToString:@"Opus"]) [args addObjectsFromArray:@[@"-c:a", @"copy"]];
+            else [args addObjectsFromArray:@[@"-c:a", @"libopus", @"-b:a", @"192k"]];
+            break;
+        case 4: // FLAC
+            [args addObjectsFromArray:@[@"-c:a", @"flac"]];
+            break;
+        case 5: // WAV
+            [args addObjectsFromArray:@[@"-c:a", @"pcm_s16le"]];
+            break;
+        default: // M4A
+            if ([sourceCodec isEqualToString:@"AAC"]) [args addObjectsFromArray:@[@"-c:a", @"copy"]];
+            else [args addObjectsFromArray:@[@"-c:a", @"aac", @"-b:a", @"256k"]];
+            [args addObjectsFromArray:@[@"-movflags", @"+faststart"]];
+            break;
+    }
+    NSString *title = outputURL.URLByDeletingPathExtension.lastPathComponent;
+    if (title.length) [args addObjectsFromArray:@[@"-metadata", [@"title=" stringByAppendingString:title]]];
+    [args addObject:outputURL.path];
+
+    [self updateProgressTitle:LOC(@"CONVERTING_AUDIO") progress:0.0f];
+    __weak typeof(self) weakSelf = self;
+    YMFFmpegRun(args, durationMs, ^(float fraction) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self || self.cancelled) return;
+        [self updateProgressTitle:LOC(@"CONVERTING_AUDIO") progress:fraction];
+    }, ^(BOOL success, BOOL cancelled, NSString *errorMessage) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self || self.cancelled || cancelled) return;
+        [NSFileManager.defaultManager removeItemAtURL:inputURL error:nil];
+        if (success) {
+            [self completeWithFileURL:outputURL isVideo:NO presenter:presenter];
+        } else {
+            [NSFileManager.defaultManager removeItemAtURL:outputURL error:nil];
+            [self failWithError:[NSError errorWithDomain:@"YouMod" code:19 userInfo:@{NSLocalizedDescriptionKey: errorMessage ?: LOC(@"DOWNLOAD_FAILED")}]];
+        }
+    });
 }
 
 - (void)mergeVideoWithAVFoundationVideoURL:(NSURL *)videoURL audioURL:(NSURL *)audioURL outputURL:(NSURL *)outputURL durationMs:(unsigned long long)durationMs presenter:(UIViewController *)presenter fallbackError:(NSError *)fallbackError {
@@ -1788,6 +2000,34 @@ static void YouModShowCopyVideoInfoSheet(YTPlayerViewController *player, UIViewC
     YouModPresentMenu(nil, items, presenter, sender);
 }
 
+// Audio-only downloads: resolve the output format (the setting, or ask) and start.
+// Without FFmpeg the only possible output is the original M4A.
+static void YouModStartAudioDownload(YouModMediaFormat *format, NSString *fileName, UIViewController *presenter, UIView *sender, NSString *videoID) {
+    YouModDownloadCoordinator *coordinator = [YouModDownloadCoordinator sharedCoordinator];
+    void (^start)(NSInteger) = ^(NSInteger output) {
+        if (!coordinator.active) coordinator.pendingAudioOutput = output;
+        [coordinator startAudioDownloadWithAudioFormat:format fileName:fileName presenter:presenter videoID:videoID];
+    };
+    if (!YouModFFmpegFormatsEnabled()) {
+        start(1);
+        return;
+    }
+    NSInteger output = INTFORVAL(AudioOutputFormat);
+    if (output >= 1 && output <= 5) {
+        start(output);
+        return;
+    }
+    NSArray<NSString *> *titles = @[@"M4A (AAC)", @"MP3 (320 kbps)", @"Opus", @"FLAC", @"WAV"];
+    NSArray<NSString *> *subtitles = @[LOC(@"AUDIO_FORMAT_M4A_DESC"), LOC(@"AUDIO_FORMAT_MP3_DESC"), LOC(@"AUDIO_FORMAT_OPUS_DESC"), LOC(@"AUDIO_FORMAT_FLAC_DESC"), LOC(@"AUDIO_FORMAT_WAV_DESC")];
+    NSMutableArray *items = [NSMutableArray array];
+    for (NSUInteger i = 0; i < titles.count; i++) {
+        [items addObject:[YouModMenuItem itemWithTitle:titles[i] subtitle:subtitles[i] icon:YouModYTIconImage(21, NO, nil) handler:^{
+            start((NSInteger)i + 1);
+        }]];
+    }
+    YouModPresentMenu(nil, items, presenter, sender);
+}
+
 static void YouModShowAudioTrackSelectionSheet(YTPlayerViewController *player, UIViewController *presenter, UIView *sender, NSString *fileName, BOOL downloadVideo, YouModMediaFormat *videoFormat) {
     NSArray <YouModMediaFormat *> *audioFormats = YouModFormatsForPlayer(player, NO);
     if (audioFormats.count == 0) {
@@ -1802,7 +2042,7 @@ static void YouModShowAudioTrackSelectionSheet(YTPlayerViewController *player, U
         if (downloadVideo) {
             [[YouModDownloadCoordinator sharedCoordinator] startVideoDownloadWithVideoFormat:videoFormat audioFormat:selectedFormat fileName:fileName presenter:presenter videoID:player.currentVideoID];
         } else {
-            [[YouModDownloadCoordinator sharedCoordinator] startAudioDownloadWithAudioFormat:selectedFormat fileName:fileName presenter:presenter videoID:player.currentVideoID];
+            YouModStartAudioDownload(selectedFormat, fileName, presenter, sender, player.currentVideoID);
         }
         return;
     }
@@ -1815,7 +2055,7 @@ static void YouModShowAudioTrackSelectionSheet(YTPlayerViewController *player, U
             if (downloadVideo) {
                 [[YouModDownloadCoordinator sharedCoordinator] startVideoDownloadWithVideoFormat:videoFormat audioFormat:format fileName:fileName presenter:presenter videoID:player.currentVideoID];
             } else {
-                [[YouModDownloadCoordinator sharedCoordinator] startAudioDownloadWithAudioFormat:format fileName:fileName presenter:presenter videoID:player.currentVideoID];
+                YouModStartAudioDownload(format, fileName, presenter, sender, player.currentVideoID);
             }
         }]];
     }

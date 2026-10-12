@@ -609,3 +609,24 @@
 "SB_SKIP_ALERT_DURATION" = "건너뛰기 알림 표시 시간";
 "SB_UNSKIP_ALERT_DURATION" = "건너뛰기 취소 알림 표시 시간";
 "SB_MIN_DURATION_SLIDER" = "건너뛸 최소 구간 길이";
+
+// FFmpeg
+"USE_FFMPEG" = "FFmpeg 사용";
+"USE_FFMPEG_DESC" = "번들된 FFmpeg(GPL)로 VP9/AV1 영상, 4K/8K, HDR, Opus 오디오와 오디오 변환을 사용할 수 있습니다. 이 빌드에 FFmpeg가 없으면 효과가 없습니다.";
+"AUDIO_OUTPUT_FORMAT" = "오디오 출력 형식";
+"AUDIO_OUTPUT_FORMAT_DESC" = "오디오만 다운로드할 때 사용할 형식입니다.";
+"ASK_EVERY_TIME" = "매번 묻기";
+"FFMPEG_CONTAINER" = "VP9/AV1 영상 컨테이너";
+"FFMPEG_PHOTOS_COMPAT" = "사진 앱용으로 변환";
+"FFMPEG_PHOTOS_COMPAT_DESC" = "VP9/AV1 영상은 H.264/HEVC로, Opus 오디오는 AAC로 다시 인코딩해 사진 앱에 저장할 수 있게 합니다. 더 느리고 HDR은 유지되지 않습니다.";
+"FFMPEG_STATUS" = "FFmpeg 상태";
+"FFMPEG_STATUS_DESC" = "번들된 FFmpeg가 로드되는지 진단 정보와 함께 확인합니다.";
+"FFMPEG_READY" = "FFmpeg 사용 가능";
+"FFMPEG_UNAVAILABLE" = "이 빌드에서는 FFmpeg를 사용할 수 없습니다";
+"CONVERTING_VIDEO" = "영상 변환 중...";
+"CONVERTING_AUDIO" = "오디오 변환 중...";
+"AUDIO_FORMAT_M4A_DESC" = "원본 AAC, 음질 손실 없음";
+"AUDIO_FORMAT_MP3_DESC" = "가장 호환성이 좋음";
+"AUDIO_FORMAT_OPUS_DESC" = "가능하면 원본 Opus";
+"AUDIO_FORMAT_FLAC_DESC" = "무손실 컨테이너";
+"AUDIO_FORMAT_WAV_DESC" = "비압축 PCM";

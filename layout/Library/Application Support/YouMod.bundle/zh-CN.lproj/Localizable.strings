@@ -576,3 +576,24 @@
 "SB_SKIP_ALERT_DURATION" = "跳过提示时长";
 "SB_UNSKIP_ALERT_DURATION" = "取消跳过提示时长";
 "SB_MIN_DURATION_SLIDER" = "可跳过片段的最小时长";
+
+// FFmpeg
+"USE_FFMPEG" = "Use FFmpeg";
+"USE_FFMPEG_DESC" = "Unlocks VP9/AV1 video, 4K/8K, HDR and Opus audio, and audio conversion, using the bundled FFmpeg (GPL). Has no effect if FFmpeg is not included in this build.";
+"AUDIO_OUTPUT_FORMAT" = "Audio output format";
+"AUDIO_OUTPUT_FORMAT_DESC" = "Format used for audio-only downloads.";
+"ASK_EVERY_TIME" = "Ask every time";
+"FFMPEG_CONTAINER" = "Container for VP9/AV1 video";
+"FFMPEG_PHOTOS_COMPAT" = "Convert for Photos";
+"FFMPEG_PHOTOS_COMPAT_DESC" = "Re-encode VP9/AV1 video to H.264/HEVC and Opus audio to AAC so the file can be saved to Photos. Slower; HDR is not preserved.";
+"FFMPEG_STATUS" = "FFmpeg status";
+"FFMPEG_STATUS_DESC" = "Check whether the bundled FFmpeg loads, with diagnostics.";
+"FFMPEG_READY" = "FFmpeg is ready";
+"FFMPEG_UNAVAILABLE" = "FFmpeg is not available in this build";
+"CONVERTING_VIDEO" = "Converting video...";
+"CONVERTING_AUDIO" = "Converting audio...";
+"AUDIO_FORMAT_M4A_DESC" = "Original AAC, no quality loss";
+"AUDIO_FORMAT_MP3_DESC" = "Most compatible";
+"AUDIO_FORMAT_OPUS_DESC" = "Original Opus when available";
+"AUDIO_FORMAT_FLAC_DESC" = "Lossless container";
+"AUDIO_FORMAT_WAV_DESC" = "Uncompressed PCM";

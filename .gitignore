@@ -2,3 +2,5 @@
 packages/
 *.deb
 .DS_Store
+modules/
+.cache/
