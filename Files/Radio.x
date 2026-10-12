@@ -108,15 +108,18 @@ static void YMLayoutRadioEntryButton(UIView *actionBar) {
     [superview bringSubviewToFront:button];
 }
 
+// didMoveToWindow only (no layoutSubviews override here): _ASDisplayView backs every
+// Texture node in the whole app, so layoutSubviews on it fires on every single layout
+// pass of every cell everywhere - on top of the other files that already hook
+// didMoveToWindow on this same class, adding a layoutSubviews hook here measurably
+// compounds the relayout cost of any large reflow (e.g. the whole watch-next feed
+// reflowing on fullscreen exit). didMoveToWindow is enough in practice: YouTube's
+// Texture cells get recreated rather than just resized across a change this big,
+// which is also the only hook Download.x's similar gesture-injection relies on.
 %hook _ASDisplayView
 - (void)didMoveToWindow {
     %orig;
-    if ([self.accessibilityIdentifier isEqualToString:@"id.video.non_scrollable_action_bar"]) {
-        YMLayoutRadioEntryButton(self);
-    }
-}
-- (void)layoutSubviews {
-    %orig;
+    if (!IS_ENABLED(RadioMode)) return;
     if ([self.accessibilityIdentifier isEqualToString:@"id.video.non_scrollable_action_bar"]) {
         YMLayoutRadioEntryButton(self);
     }
