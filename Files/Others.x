@@ -214,9 +214,24 @@
 %end
 
 // Disables YouTube's own "turn captions on when muted/volume is zero" feature
-// (YTAutoCaptionsOnMuteController, new as of ~21.40.x). Class/selector names
-// confirmed against the 21.40.5 string pool; not yet confirmed on-device.
+// (YTAutoCaptionsOnMuteController, new as of ~21.40.x).
+//
+// Confirmed on-device NOT sufficient: isAutoCaptionsOnMuteOn/
+// shouldEnableAutoCaptionsOnMuteFeature are evidently just feature-enabled
+// getters, not the per-mute-event gate, since captions still appear on mute
+// with DisableAutoCaptionsOnMute on. The binary's string pool has a larger
+// cluster of related selectors - shouldShowAutoCaptionsOnMuteForMutedVideo and
+// shouldUpdateAutoCaptionsOnMute (both no-argument, so safe to hook the same
+// way as the two above: no parameter types to get wrong) are much likelier to
+// be the actual per-event decision. The rest of that cluster
+// (shouldShowAutoCaptionsOnMuteWithVolume:captionsAvailable:,
+// updateAutoCaptionsOnMuteVisibilityWithVolume:, etc.) take unconfirmed
+// non-BOOL parameters with no header anywhere to check against - guessing a
+// parameter type wrong there risks a crash, not just a no-op, so those are
+// deliberately left alone pending real device/debugger confirmation.
 %hook YTAutoCaptionsOnMuteController
 - (BOOL)isAutoCaptionsOnMuteOn { return IS_ENABLED(DisableAutoCaptionsOnMute) ? NO : %orig; }
 - (BOOL)shouldEnableAutoCaptionsOnMuteFeature { return IS_ENABLED(DisableAutoCaptionsOnMute) ? NO : %orig; }
+- (BOOL)shouldShowAutoCaptionsOnMuteForMutedVideo { return IS_ENABLED(DisableAutoCaptionsOnMute) ? NO : %orig; }
+- (BOOL)shouldUpdateAutoCaptionsOnMute { return IS_ENABLED(DisableAutoCaptionsOnMute) ? NO : %orig; }
 %end
