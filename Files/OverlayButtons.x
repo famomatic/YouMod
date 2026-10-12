@@ -25,6 +25,12 @@ static void didSelectRate(float rate) {
 @interface YTMainAppControlsOverlayView ()
 - (void)updateQualityButton:(id)arg;
 - (void)updateSpeedButton:(id)arg;
+// Confirmed present (as selectors) in 21.40.5's string pool but not in
+// YouTubeHeader's YTMainAppControlsOverlayView.h - needed to anchor the button-style
+// speed stepper under the real previous/pause/next transport buttons.
+- (UIButton *)previousButton;
+- (UIButton *)nextButton;
+- (UIButton *)playPauseButton;
 @end
 
 // YouGetCaption (https://github.com/PoomSmart/YouGetCaption)
@@ -282,10 +288,106 @@ static YTQTMButton *YMCreateOverlayButton(YTMainAppControlsOverlayView *overlay,
     return button;
 }
 
+#pragma mark - Persistent speed stepper (button-style, under prev/pause/next)
+// The other uYouEnhanced look: small "-"/"+" step buttons directly under the real
+// previousButton/nextButton, and a small text readout under playPauseButton - not a
+// slider at all. Selectable in Settings against the slider popup further below
+// (SpeedControlStyle), since they're alternatives, not both at once.
+
+static const NSInteger YMSpeedStepperMinusTag = 9906;
+static const NSInteger YMSpeedStepperPlusTag = 9907;
+static const NSInteger YMSpeedStepperTextTag = 9908;
+static const CGFloat YMSpeedStepperButtonSize = 22.0; // smaller than the main 30pt overlay buttons
+static const CGFloat YMSpeedStepperTextWidth = 50.0;
+static const CGFloat YMSpeedStepperTextHeight = 16.0;
+static const CGFloat YMSpeedStepperGapBelowTransport = 4.0;
+static const float YMSpeedStepperStep = 0.05;
+
+static UIButton *YMCreateSpeedStepperButton(YTMainAppControlsOverlayView *overlay, NSInteger tag, NSString *symbolName, SEL action) {
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightBold];
+    UIImage *icon = [[UIImage systemImageNamed:symbolName withConfiguration:config] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    button.tag = tag;
+    [button setImage:icon forState:UIControlStateNormal];
+    button.tintColor = [UIColor whiteColor];
+    button.exclusiveTouch = YES;
+    [button addTarget:overlay action:action forControlEvents:UIControlEventTouchUpInside];
+    [overlay addSubview:button];
+    return button;
+}
+
+// Positions the -/+/text trio under YouTube's own previous/pause/next buttons. All
+// three are plain properties on the overlay in every build we checked (confirmed
+// present in 21.40.5's selector list); guarded with respondsToSelector: in case a
+// future YouTube version moves them, in which case the trio just doesn't appear.
+static void YMLayoutSpeedStepper(YTMainAppControlsOverlayView *overlay, BOOL shouldBeVisible) {
+    UIButton *minusBtn = (UIButton *)[overlay viewWithTag:YMSpeedStepperMinusTag];
+    UIButton *plusBtn = (UIButton *)[overlay viewWithTag:YMSpeedStepperPlusTag];
+    YTLabel *textLabel = (YTLabel *)[overlay viewWithTag:YMSpeedStepperTextTag];
+
+    BOOL enabled = IS_ENABLED(ShowSpeedSlider) && INTFORVAL(SpeedControlStyle) == 1;
+    if (!enabled || !shouldBeVisible) {
+        minusBtn.hidden = YES;
+        plusBtn.hidden = YES;
+        textLabel.hidden = YES;
+        return;
+    }
+    if (![overlay respondsToSelector:@selector(previousButton)] || ![overlay respondsToSelector:@selector(nextButton)] || ![overlay respondsToSelector:@selector(playPauseButton)]) {
+        minusBtn.hidden = YES;
+        plusBtn.hidden = YES;
+        textLabel.hidden = YES;
+        return;
+    }
+
+    UIButton *prevButton = [overlay previousButton];
+    UIButton *nextButton = [overlay nextButton];
+    UIButton *playPauseButton = [overlay playPauseButton];
+    if (!prevButton.window || !nextButton.window || !playPauseButton.window) {
+        minusBtn.hidden = YES;
+        plusBtn.hidden = YES;
+        textLabel.hidden = YES;
+        return;
+    }
+    CGRect prevFrame = [prevButton convertRect:prevButton.bounds toView:overlay];
+    CGRect nextFrame = [nextButton convertRect:nextButton.bounds toView:overlay];
+    CGRect playPauseFrame = [playPauseButton convertRect:playPauseButton.bounds toView:overlay];
+
+    if (!minusBtn) minusBtn = YMCreateSpeedStepperButton(overlay, YMSpeedStepperMinusTag, @"minus.circle.fill", @selector(ymSpeedStepperMinusTapped:));
+    if (!plusBtn) plusBtn = YMCreateSpeedStepperButton(overlay, YMSpeedStepperPlusTag, @"plus.circle.fill", @selector(ymSpeedStepperPlusTapped:));
+    if (!textLabel) {
+        textLabel = [%c(YTLabel) new];
+        textLabel.tag = YMSpeedStepperTextTag;
+        textLabel.textAlignment = NSTextAlignmentCenter;
+        textLabel.textColor = [UIColor whiteColor];
+        textLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
+        textLabel.userInteractionEnabled = YES;
+        [textLabel addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:overlay action:@selector(ymSpeedStepperTextTapped:)]];
+        [overlay addSubview:textLabel];
+    }
+
+    minusBtn.hidden = NO;
+    plusBtn.hidden = NO;
+    textLabel.hidden = NO;
+    textLabel.text = currentSpeedLabel;
+
+    minusBtn.frame = CGRectMake(CGRectGetMidX(prevFrame) - YMSpeedStepperButtonSize / 2.0,
+                               CGRectGetMaxY(prevFrame) + YMSpeedStepperGapBelowTransport,
+                               YMSpeedStepperButtonSize, YMSpeedStepperButtonSize);
+    plusBtn.frame = CGRectMake(CGRectGetMidX(nextFrame) - YMSpeedStepperButtonSize / 2.0,
+                              CGRectGetMaxY(nextFrame) + YMSpeedStepperGapBelowTransport,
+                              YMSpeedStepperButtonSize, YMSpeedStepperButtonSize);
+    textLabel.frame = CGRectMake(CGRectGetMidX(playPauseFrame) - YMSpeedStepperTextWidth / 2.0,
+                                 CGRectGetMaxY(playPauseFrame) + YMSpeedStepperGapBelowTransport,
+                                 YMSpeedStepperTextWidth, YMSpeedStepperTextHeight);
+    [overlay bringSubviewToFront:minusBtn];
+    [overlay bringSubviewToFront:plusBtn];
+    [overlay bringSubviewToFront:textLabel];
+}
+
 #pragma mark - Custom slider-based speed picker (ported from uYouEnhanced's YouSpeed)
-// uYouEnhanced never showed a persistent slider under the transport controls - the
-// speed.video overlay button (registered below) already shows the current rate as
-// text, same as every other overlay button. What YouSpeed actually adds is this:
+// This is the other uYouEnhanced look: the speed.video overlay button (registered
+// below) shows the current rate as text, same as every other overlay button. What
+// YouSpeed actually adds is this:
 // tapping it replaces YouTube's own preset-only speed picker with a popup holding a
 // slider plus minus/plus/preset buttons, gated by ShowSpeedSlider.
 
@@ -426,7 +528,7 @@ static YouModSpeedAlertView *ymSpeedAlert = nil;
 %hook YTMainAppVideoPlayerOverlayViewController
 
 - (void)didPressVarispeed:(id)arg1 {
-    if (!IS_ENABLED(ShowSpeedSlider)) {
+    if (!IS_ENABLED(ShowSpeedSlider) || INTFORVAL(SpeedControlStyle) != 0) {
         %orig;
         return;
     }
@@ -575,6 +677,8 @@ static BOOL isRelatedVideosExpanded = NO;
         prevHalfWidth = width / 2.0;
         [self bringSubviewToFront:btn];
     }
+
+    YMLayoutSpeedStepper(self, overlayVisible && !isRelatedVideosExpanded);
 }
 
 - (void)setOverlayVisible:(BOOL)visible {
@@ -644,6 +748,9 @@ static BOOL isRelatedVideosExpanded = NO;
             break;
         }
     }
+
+    YTLabel *stepperText = (YTLabel *)[self viewWithTag:YMSpeedStepperTextTag];
+    if (stepperText) stepperText.text = currentSpeedLabel;
 }
 
 %new
@@ -660,6 +767,28 @@ static BOOL isRelatedVideosExpanded = NO;
             break;
         }
     }
+}
+
+%new
+- (void)ymSpeedStepperMinusTapped:(UIButton *)sender {
+    YTPlayerViewController *player = YMPlayerVCFromOverlay(self);
+    float newRate = MAX(YMSpeedMin, currentPlaybackRate - YMSpeedStepperStep);
+    [player setPlaybackRate:newRate];
+}
+
+%new
+- (void)ymSpeedStepperPlusTapped:(UIButton *)sender {
+    YTPlayerViewController *player = YMPlayerVCFromOverlay(self);
+    float sliderMax = IS_ENABLED(ExtraSpeed) ? 10.0 : 2.0;
+    float newRate = MIN(sliderMax, currentPlaybackRate + YMSpeedStepperStep);
+    [player setPlaybackRate:newRate];
+}
+
+%new
+- (void)ymSpeedStepperTextTapped:(UITapGestureRecognizer *)gesture {
+    YTPlayerViewController *player = YMPlayerVCFromOverlay(self);
+    YTMainAppVideoPlayerOverlayViewController *ovcon = [player activeVideoPlayerOverlay];
+    [ovcon didPressVarispeed:gesture.view];
 }
 %end
 

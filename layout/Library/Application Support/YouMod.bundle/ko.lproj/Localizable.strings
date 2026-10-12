@@ -347,8 +347,11 @@
 "HIDE_COMMENTS_PREVIEW_DESC" = "인기 댓글 미리보기 상자를 제거하되 전체 댓글 섹션은 펼쳐볼 수 있도록 유지합니다.";
 "LOCK_SPEED" = "속도 고정";
 "LOCK_SPEED_DESC" = "아래로 스와이프하여 조절한 속도를 고정합니다.";
-"SHOW_SPEED_SLIDER" = "슬라이더형 배속 선택";
-"SHOW_SPEED_SLIDER_DESC" = "배속 버튼을 눌렀을 때 uYouEnhanced의 YouSpeed처럼 네이티브 메뉴 대신 슬라이더 + 증감/프리셋 버튼이 있는 팝업을 띄웁니다.";
+"SHOW_SPEED_SLIDER" = "커스텀 배속 컨트롤";
+"SHOW_SPEED_SLIDER_DESC" = "uYouEnhanced처럼 배속 버튼의 네이티브 메뉴 대신 커스텀 컨트롤을 사용합니다. 아래에서 스타일을 선택하세요.";
+"SPEED_CONTROL_STYLE" = "배속 컨트롤 스타일";
+"SPEED_STYLE_SLIDER" = "슬라이더";
+"SPEED_STYLE_BUTTON" = "버튼";
 "CHOOSE_FROM_ORIGINAL" = "원래 배속 메뉴 사용";
 "SEEK_ON_OVERLAY" = "오버레이에서 탐색";
 "SEEK_ON_OVERLAY_DESC" = "동영상 오버레이에서 좌우로 스와이프하여 재생 위치를 탐색할 수 있습니다.";

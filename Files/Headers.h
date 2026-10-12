@@ -165,6 +165,7 @@
 #define OverlayButtonOffsetY @"YouModOverlayButtonOffsetY"
 #define OverlayButtonCorner @"YouModOverlayButtonCorner" // 0=top-right(default) 1=top-left 2=bottom-right 3=bottom-left, YTLite-style
 #define ShowSpeedSlider @"YouModShowSpeedSlider"
+#define SpeedControlStyle @"YouModSpeedControlStyle" // 0=slider popup(default) 1=button stepper under prev/pause/next
 #define RemoveDarkOverlay @"YouModRemoveDarkOverlay"
 #define RemoveAmbiant @"YouModRemoveAmbiantColors"
 #define HideEndScreenCards @"YouModHideEndScreenCards"
