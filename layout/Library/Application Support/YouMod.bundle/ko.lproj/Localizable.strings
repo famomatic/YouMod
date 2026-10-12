@@ -438,6 +438,8 @@
 "CREATE_TAB" = "만들기";
 "SUBSCRIPTIONS_TAB" = "구독";
 "LIBRARY_TAB" = "보관함 (나)";
+"PIN_TAB_BAR" = "탭바 항상 표시";
+"PIN_TAB_BAR_DESC" = "스크롤할 때 하단 탭바가 자동으로 숨겨지지 않고 항상 보이게 합니다.";
 "HIDE_TAB_INDI" = "탭 표시기 숨기기";
 "HIDE_TAB_INDI_DESC" = "탭바의 모든 탭 표시기를 숨깁니다.";
 "HIDE_TAB_LABELS" = "탭 라벨 숨기기";

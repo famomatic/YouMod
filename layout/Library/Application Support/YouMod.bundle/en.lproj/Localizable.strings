@@ -438,6 +438,8 @@
 "CREATE_TAB" = "Create";
 "SUBSCRIPTIONS_TAB" = "Subscriptions";
 "LIBRARY_TAB" = "Library (You)";
+"PIN_TAB_BAR" = "Always show tab bar";
+"PIN_TAB_BAR_DESC" = "Keeps the bottom tab bar visible instead of auto-hiding while scrolling.";
 "HIDE_TAB_INDI" = "Hide tab indicators";
 "HIDE_TAB_INDI_DESC" = "Hide all tab indicators in the tab bar.";
 "HIDE_TAB_LABELS" = "Hide tab labels";

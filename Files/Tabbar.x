@@ -362,6 +362,7 @@ static BOOL isTabSelected = NO;
 // device safe-area bottom when the tabbar is hidden.
 %hook YTAppViewController
 - (void)hidePivotBar {
+    if (IS_ENABLED(PinTabBar)) return;
     %orig;
     sbUpdateOverlayInsetForPivotBar();
 }
@@ -373,6 +374,7 @@ static BOOL isTabSelected = NO;
 
 %hook YTAppViewControllerImpl
 - (void)hidePivotBar {
+    if (IS_ENABLED(PinTabBar)) return;
     %orig;
     sbUpdateOverlayInsetForPivotBar();
 }

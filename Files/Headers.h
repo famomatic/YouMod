@@ -244,6 +244,7 @@
 // Tab bar
 #define DefaultTab @"YouModDefaultStartupTab"
 #define TabOrder @"YouModTabOrder"
+#define PinTabBar @"YouModPinTabBar" // keeps the bottom tab bar from auto-hiding on scroll
 #define HideTabIndi @"YouModHideTabIndicators"
 #define HideTabLabels @"YouModHideTabLabels"
 #define UseFrostedTabBar @"YouModUseFrostedTabBar"
