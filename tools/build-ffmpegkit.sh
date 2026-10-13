@@ -26,6 +26,9 @@ BUILD_ARGS=(
   --target=14.0
   --enable-gpl
   --enable-lib-all
+  # --enable-lib-all turns on both TLS stacks, which FFmpeg's configure rejects.
+  # Keep OpenSSL (SRT is built against it); FFmpeg only reads local files here.
+  --disable-lib-gnutls
   --enable-lib-ios-audiotoolbox
   --enable-lib-ios-avfoundation
   --enable-lib-ios-bzip2
