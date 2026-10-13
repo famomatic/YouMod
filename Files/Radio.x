@@ -5,7 +5,8 @@
 
 // Radio Mode: audio-only playback, like YouTube Music's now-playing screen. Entered
 // via a button placed under the like/dislike/share/download row or the radio overlay
-// button. Covers the video with its artwork (YouTube's controls and YouMod's overlay
+// button. Turns YouTube's video track off (only audio is fetched and decoded) and
+// covers the video area with its artwork (YouTube's controls and YouMod's overlay
 // buttons - loop included - stay usable on top) and keeps Picture in Picture from
 // popping up while active.
 
@@ -41,6 +42,7 @@ static UIWindow *YMKeyWindowForSearch(void) {
 extern NSURL *YouModThumbnailURLForPlayer(YTPlayerViewController *player);
 static void YMLayoutRadioCover(YTPlayerView *playerView);
 static void YMRadioApplyPiPPolicy(void);
+static void YMRadioApplyAudioOnly(YTPlayerViewController *player);
 
 static void YMToggleRadioMode(void) {
     gYMRadioModeActive = !gYMRadioModeActive;
@@ -52,6 +54,7 @@ static void YMToggleRadioMode(void) {
     YTPlayerView *playerView = (YTPlayerView *)player.playerView;
     if ([playerView isKindOfClass:%c(YTPlayerView)]) YMLayoutRadioCover(playerView);
     YMRadioApplyPiPPolicy();
+    YMRadioApplyAudioOnly(player);
     // Keep the action-bar entry button's title in sync where that button exists.
     UIButton *entry = (UIButton *)[YMKeyWindowForSearch() viewWithTag:YMRadioEntryButtonTag];
     [entry setTitle:LOC(gYMRadioModeActive ? @"RADIO_MODE_EXIT" : @"RADIO_MODE_ENTER") forState:UIControlStateNormal];
@@ -121,6 +124,73 @@ static void YMLayoutRadioEntryButton(UIView *actionBar) {
         test = test.superview;
     }
 }
+%end
+
+
+#pragma mark - Audio only: drop the video track while Radio Mode is on
+
+// YouTube streams audio and video as separate tracks, so nothing needs remuxing:
+// the HAM player item asks its video format constraint whether to play the video
+// track at all (-[MLHAMPlayerItem updateVideoTrackDisabled] checks -disableTrack),
+// and YouTube ships MLDisableTrackFormatConstraint for exactly that. While Radio
+// Mode is on the active item gets that constraint, so only audio is fetched and
+// decoded; the constraint YouTube had set (quality setting etc.) is remembered per
+// item and put back when Radio Mode ends. Constraints YouTube sets in the meantime
+// (quality changes) are remembered instead of applied.
+static const void *YMRadioSavedConstraintKey = &YMRadioSavedConstraintKey;
+static const void *YMRadioHasSavedConstraintKey = &YMRadioHasSavedConstraintKey;
+
+static id YMRadioDisableTrackConstraint(void) {
+    static id constraint;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        Class cls = NSClassFromString(@"MLDisableTrackFormatConstraint");
+        constraint = cls ? [cls new] : nil;
+    });
+    return constraint;
+}
+
+static BOOL YMRadioIsDisableConstraint(id constraint) {
+    Class cls = NSClassFromString(@"MLDisableTrackFormatConstraint");
+    return cls && [constraint isKindOfClass:cls];
+}
+
+static id YMRadioPlayerItem(YTPlayerViewController *player) {
+    id video = [player respondsToSelector:@selector(activeVideo)] ? [player activeVideo] : nil;
+    return [video respondsToSelector:@selector(playerItem)] ? [video playerItem] : nil;
+}
+
+// Sets the active item's constraint according to Radio Mode.
+static void YMRadioApplyAudioOnly(YTPlayerViewController *player) {
+    id item = YMRadioPlayerItem(player);
+    if (!item || ![item respondsToSelector:@selector(videoFormatConstraint)] || ![item respondsToSelector:@selector(setVideoFormatConstraint:)]) return;
+    id current = [item videoFormatConstraint];
+    BOOL wantAudioOnly = gYMRadioModeActive && IS_ENABLED(RadioMode);
+    if (wantAudioOnly) {
+        if (YMRadioIsDisableConstraint(current) || !YMRadioDisableTrackConstraint()) return;
+        objc_setAssociatedObject(item, YMRadioSavedConstraintKey, current, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(item, YMRadioHasSavedConstraintKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [item setVideoFormatConstraint:YMRadioDisableTrackConstraint()];
+    } else if ([objc_getAssociatedObject(item, YMRadioHasSavedConstraintKey) boolValue]) {
+        id saved = objc_getAssociatedObject(item, YMRadioSavedConstraintKey);
+        objc_setAssociatedObject(item, YMRadioHasSavedConstraintKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(item, YMRadioSavedConstraintKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [item setVideoFormatConstraint:saved];
+    }
+}
+
+// YouTube changing the constraint while Radio Mode holds the item (e.g. a quality
+// change): remember it for later instead of re-enabling video.
+%group YMRadioAudioOnly
+%hook MLHAMPlayerItem
+- (void)setVideoFormatConstraint:(id)constraint {
+    if ([objc_getAssociatedObject(self, YMRadioHasSavedConstraintKey) boolValue] && !YMRadioIsDisableConstraint(constraint) && gYMRadioModeActive) {
+        objc_setAssociatedObject(self, YMRadioSavedConstraintKey, constraint, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+    %orig;
+}
+%end
 %end
 
 #pragma mark - The cover: artwork over the video, YouTube's controls stay on top
@@ -263,6 +333,8 @@ static void YMLayoutRadioCover(YTPlayerView *playerView) {
 - (void)singleVideo:(id)video currentVideoTimeDidChange:(id)time {
     %orig;
     if (!gYMRadioModeActive) return;
+    // A new video in the queue starts with YouTube's constraint; drop its video too.
+    YMRadioApplyAudioOnly(self);
     UIView *cover = [YMRadioRenderingContainer((YTPlayerView *)self.playerView) viewWithTag:YMRadioCoverTag];
     UIView *art = [cover viewWithTag:YMRadioTitleTag + 100];
     if (cover && ![art.accessibilityIdentifier isEqualToString:self.currentVideoID]) [(UIView *)self.playerView setNeedsLayout];
@@ -328,6 +400,7 @@ static void YMRadioApplyPiPPolicy(void) {
 %ctor {
     YMRegisterDefaults();
     %init;
+    if (NSClassFromString(@"MLHAMPlayerItem")) %init(YMRadioAudioOnly);
     YMOverlayButtonSpec *radio = [[YMOverlayButtonSpec alloc] init];
     radio.identifier = @"radio.video";
     radio.symbolName = @"headphones";
