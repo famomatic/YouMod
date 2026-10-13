@@ -447,13 +447,21 @@ static BOOL isTabSelected = NO;
 }
 %end
 
+// Always show tab bar: turn off only YouTube's hide-on-scroll. Blocking -hidePivotBar
+// itself also kept the bar up while the watch player expands, and the page under the
+// player was then laid out against the wrong bounds - after minimizing, a playlist
+// page's list sat shifted left with a blank strip on the right.
+%hook YTScrollableNavigationController
+- (BOOL)hidePivotBarOnScroll { return IS_ENABLED(PinTabBar) ? NO : %orig; }
+- (void)setHidePivotBarOnScroll:(BOOL)hide { %orig(IS_ENABLED(PinTabBar) ? NO : hide); }
+%end
+
 // Recompute SB overlay safe-area inset whenever YouTube shows or hides the pivot bar
 // (e.g. entering/exiting fullscreen player). This keeps the SponsorBlock skip pill
 // and download progress pill anchored above the tabbar when visible, and at the
 // device safe-area bottom when the tabbar is hidden.
 %hook YTAppViewController
 - (void)hidePivotBar {
-    if (IS_ENABLED(PinTabBar)) return;
     %orig;
     sbUpdateOverlayInsetForPivotBar();
 }
@@ -465,7 +473,6 @@ static BOOL isTabSelected = NO;
 
 %hook YTAppViewControllerImpl
 - (void)hidePivotBar {
-    if (IS_ENABLED(PinTabBar)) return;
     %orig;
     sbUpdateOverlayInsetForPivotBar();
 }
