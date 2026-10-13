@@ -389,16 +389,21 @@ static void YMLayoutSpeedStepper(YTMainAppControlsOverlayView *overlay, BOOL sho
     textLabel.hidden = NO;
     textLabel.text = currentSpeedLabel;
 
-    minusBtn.frame = CGRectMake(CGRectGetMidX(prevFrame) - YMSpeedStepperButtonSize / 2.0,
-                               CGRectGetMaxY(prevFrame) + YMSpeedStepperGapBelowTransport,
+    // One row for all three: centred on a single line below the lowest transport
+    // button (play/pause is taller than previous/next, so per-button offsets left
+    // the row uneven). Horizontally each piece stays under its own button.
+    CGFloat transportBottom = MAX(CGRectGetMaxY(playPauseFrame), MAX(CGRectGetMaxY(prevFrame), CGRectGetMaxY(nextFrame)));
+    CGFloat rowCenterY = round(transportBottom + YMSpeedStepperGapBelowTransport + YMSpeedStepperButtonSize / 2.0);
+    minusBtn.frame = CGRectMake(round(CGRectGetMidX(prevFrame) - YMSpeedStepperButtonSize / 2.0),
+                               rowCenterY - YMSpeedStepperButtonSize / 2.0,
                                YMSpeedStepperButtonSize, YMSpeedStepperButtonSize);
-    plusBtn.frame = CGRectMake(CGRectGetMidX(nextFrame) - YMSpeedStepperButtonSize / 2.0,
-                              CGRectGetMaxY(nextFrame) + YMSpeedStepperGapBelowTransport,
+    plusBtn.frame = CGRectMake(round(CGRectGetMidX(nextFrame) - YMSpeedStepperButtonSize / 2.0),
+                              rowCenterY - YMSpeedStepperButtonSize / 2.0,
                               YMSpeedStepperButtonSize, YMSpeedStepperButtonSize);
-    // Pill sized to the readout, vertically centred on the -/+ buttons.
+    // Pill sized to the readout, on the same centre line.
     CGFloat textWidth = MAX(YMSpeedStepperTextMinWidth, ceil([textLabel sizeThatFits:CGSizeMake(CGFLOAT_MAX, YMSpeedStepperTextHeight)].width) + 16.0);
-    textLabel.frame = CGRectMake(CGRectGetMidX(playPauseFrame) - textWidth / 2.0,
-                                 CGRectGetMaxY(playPauseFrame) + YMSpeedStepperGapBelowTransport + (YMSpeedStepperButtonSize - YMSpeedStepperTextHeight) / 2.0,
+    textLabel.frame = CGRectMake(round(CGRectGetMidX(playPauseFrame) - textWidth / 2.0),
+                                 rowCenterY - YMSpeedStepperTextHeight / 2.0,
                                  textWidth, YMSpeedStepperTextHeight);
     [overlay bringSubviewToFront:minusBtn];
     [overlay bringSubviewToFront:plusBtn];
