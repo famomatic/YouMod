@@ -9,6 +9,7 @@
 #import "LocalPlayerEngine.h"
 #import "FFmpegKit.h"
 #import <AVKit/AVKit.h>
+#import <objc/message.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import <VideoToolbox/VideoToolbox.h>
 
@@ -90,6 +91,49 @@ static NSString *YMLocalUnsupportedFormat(NSURL *url) {
     }
     [cache setObject:result forKey:key];
     return result.length ? result : nil;
+}
+
+
+#pragma mark - YouTube / YouMod settings
+
+// YouTube's own "Double-tap to seek" setting (Settings > General): -[YTUserDefaults
+// doubleTapSeekDuration] returns the stored seconds, 5/10/15/20/30/60, else 10.
+// YTUserDefaults has no shared accessor, so the instance is picked up the first
+// time YouTube reads any of its keyed settings (each goes through keysProvider).
+static __weak id ymYTUserDefaults;
+
+%hook YTUserDefaults
+- (id)keysProvider {
+    ymYTUserDefaults = self;
+    return %orig;
+}
+%end
+
+static NSTimeInterval YMDoubleTapSeekSeconds(void) {
+    id defaults = ymYTUserDefaults;
+    NSInteger seconds = [defaults respondsToSelector:@selector(doubleTapSeekDuration)] ? ((NSInteger (*)(id, SEL))objc_msgSend)(defaults, @selector(doubleTapSeekDuration)) : 10;
+    switch (seconds) {
+        case 5: case 10: case 15: case 20: case 30: case 60: return seconds;
+        default: return 10;
+    }
+}
+
+// YouMod raises the speed limit to 10x whenever one of its speed features is on
+// (the same condition it uses for YouTube's player), otherwise YouTube's 2x.
+static float YMMaximumRate(void) {
+    BOOL extra = IS_ENABLED(ExtraSpeed) || IS_ENABLED(GestureControls) || INTFORVAL(HoldToSpeedIndex) >= 9 || INTFORVAL(AutoSpeedIndex) >= 9;
+    return extra ? 10.0f : 2.0f;
+}
+
+// The speed menu: YouMod's extended list, or YouTube's own.
+static NSArray<NSNumber *> *YMSpeedOptions(void) {
+    if (YMMaximumRate() > 2.0f) return @[@0.25, @0.5, @0.75, @1.0, @1.25, @1.5, @1.75, @2.0, @2.5, @3.0, @5.0, @7.5, @10.0];
+    return @[@0.25, @0.5, @0.75, @1.0, @1.25, @1.5, @1.75, @2.0];
+}
+
+static NSTimeInterval YMSkipSeconds(NSString *key) {
+    double value = [NSUserDefaults.standardUserDefaults doubleForKey:key];
+    return value > 0 ? value : 10;
 }
 
 #pragma mark - Playback
@@ -520,11 +564,20 @@ static YMPlaybackRoute YMLocalRouteForURL(NSURL *url, BOOL *playable) {
     [self.commandTargets addObject:add(center.togglePlayPauseCommand, ^(MPRemoteCommandEvent *e) { [weakSelf togglePlayPause]; })];
     [self.commandTargets addObject:add(center.nextTrackCommand, ^(MPRemoteCommandEvent *e) { [weakSelf next]; })];
     [self.commandTargets addObject:add(center.previousTrackCommand, ^(MPRemoteCommandEvent *e) { [weakSelf previous]; })];
+    [self.commandTargets addObject:add(center.skipForwardCommand, ^(MPRemoteCommandEvent *e) { [weakSelf seekBy:YMSkipSeconds(ForwardSeconds)]; })];
+    [self.commandTargets addObject:add(center.skipBackwardCommand, ^(MPRemoteCommandEvent *e) { [weakSelf seekBy:-YMSkipSeconds(RewindSeconds)]; })];
     [self.commandTargets addObject:add(center.changePlaybackPositionCommand, ^(MPRemoteCommandEvent *e) {
         [weakSelf seekToTime:((MPChangePlaybackPositionCommandEvent *)e).positionTime];
     })];
-    center.skipForwardCommand.enabled = NO;
-    center.skipBackwardCommand.enabled = NO;
+    // YouMod's lock screen skip settings: a skip button replaces previous/next on
+    // the side it is enabled for, with the configured seconds.
+    BOOL skipBack = IS_ENABLED(SkipBackwardEnabled), skipForward = IS_ENABLED(SkipForwardEnabled);
+    center.skipBackwardCommand.enabled = skipBack;
+    center.skipBackwardCommand.preferredIntervals = @[@(YMSkipSeconds(RewindSeconds))];
+    center.skipForwardCommand.enabled = skipForward;
+    center.skipForwardCommand.preferredIntervals = @[@(YMSkipSeconds(ForwardSeconds))];
+    center.previousTrackCommand.enabled = !skipBack;
+    center.nextTrackCommand.enabled = !skipForward;
 }
 
 - (void)removeRemoteCommands {
@@ -1088,7 +1141,7 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
     NSString *rateTitle = [self rateTitle:playback.rate];
     [self.speedButton setTitle:rateTitle forState:UIControlStateNormal];
     NSMutableArray *rates = [NSMutableArray array];
-    for (NSNumber *value in @[@0.25, @0.5, @0.75, @1.0, @1.25, @1.5, @1.75, @2.0, @3.0]) {
+    for (NSNumber *value in YMSpeedOptions()) {
         UIAction *action = [UIAction actionWithTitle:[self rateTitle:value.floatValue] image:nil identifier:nil handler:^(UIAction *a) {
             [YMLocalPlayback sharedPlayback].rate = value.floatValue;
         }];
@@ -1373,7 +1426,7 @@ typedef NS_ENUM(NSInteger, YMLocalPanMode) {
     }
 }
 
-// Slide to seek: a full width covers the video (up to five minutes for long ones).
+// YouMod "seek on overlay".
 - (void)seekPan:(UIPanGestureRecognizer *)pan {
     YMLocalPlayback *playback = [YMLocalPlayback sharedPlayback];
     NSTimeInterval duration = playback.duration;
@@ -1382,9 +1435,9 @@ typedef NS_ENUM(NSInteger, YMLocalPanMode) {
         self.scrubbing = YES;
         [self setControlsVisible:YES animated:YES];
     }
+    // Like dragging YouTube's scrubber: the video's width spans the whole duration.
     CGFloat width = MAX(self.videoContainer.bounds.size.width, 1);
-    NSTimeInterval span = MIN(MAX(duration, 30), 300);
-    NSTimeInterval target = MIN(MAX(self.panStartValue + [pan translationInView:self.view].x / width * span, 0), MAX(duration - 0.5, 0));
+    NSTimeInterval target = MIN(MAX(self.panStartValue + [pan translationInView:self.view].x / width * duration, 0), MAX(duration - 0.5, 0));
     if (pan.state == UIGestureRecognizerStateBegan || pan.state == UIGestureRecognizerStateChanged) {
         if (duration > 0) self.slider.value = target / duration;
         [self updateTime];
@@ -1444,7 +1497,7 @@ typedef NS_ENUM(NSInteger, YMLocalPanMode) {
         }
     } else {
         // 0.05 steps, like YouMod's speed gesture.
-        float value = roundf(MIN(MAX(self.panStartValue + delta * 8, 0.25), 4.0) * 20) / 20;
+        float value = roundf(MIN(MAX(self.panStartValue + delta * 8, 0.25), YMMaximumRate()) * 20) / 20;
         if (fabsf(value - playback.rate) > 0.001f) playback.rate = value;
         symbol = value < 1 ? @"tortoise.fill" : (value == 1 ? @"speedometer" : @"hare.fill");
         text = [NSString stringWithFormat:@" %.2fx", value];
@@ -1510,8 +1563,9 @@ typedef NS_ENUM(NSInteger, YMLocalPanMode) {
     if (now - self.lastDoubleTapTime > 1.2 || self.lastDoubleTapForward != forward) self.doubleTapTotal = 0;
     self.lastDoubleTapTime = now;
     self.lastDoubleTapForward = forward;
-    self.doubleTapTotal += 10;
-    [playback seekBy:forward ? 10 : -10];
+    NSTimeInterval step = YMDoubleTapSeekSeconds();
+    self.doubleTapTotal += step;
+    [playback seekBy:forward ? step : -step];
     self.seekFeedback.text = [NSString stringWithFormat:@"%@%ds", forward ? @"+" : @"−", (int)self.doubleTapTotal];
     self.seekFeedback.center = CGPointMake(forward ? width * 0.78 : width * 0.22, self.videoContainer.bounds.size.height / 2);
     [self.seekFeedback.layer removeAllAnimations];
@@ -1756,7 +1810,7 @@ typedef NS_ENUM(NSInteger, YMLocalPanMode) {
     }] forControlEvents:UIControlEventTouchUpInside];
     [plus addAction:[UIAction actionWithHandler:^(UIAction *a) {
         YMLocalPlayback *p = [YMLocalPlayback sharedPlayback];
-        p.rate = MIN(4.0f, roundf((p.rate + 0.05f) * 20) / 20);
+        p.rate = MIN(YMMaximumRate(), roundf((p.rate + 0.05f) * 20) / 20);
     }] forControlEvents:UIControlEventTouchUpInside];
     label.font = [UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightBold];
     label.textColor = UIColor.whiteColor;
