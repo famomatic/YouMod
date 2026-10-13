@@ -855,10 +855,21 @@ static NSURL *YouModThumbnailURL(YTPlayerViewController *player) {
     return [NSURL URLWithString:bestThumbnail.URL];
 }
 
+// The authorization handler runs on an arbitrary queue; every caller shows UI
+// (toasts, share sheet) from its completion, so it is always delivered on main.
+// Presenting from the background queue is what crashed when access was denied.
 static void YouModRequestPhotoAccess(void (^completion)(BOOL granted)) {
-    [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus status) {
-        completion(status == PHAuthorizationStatusAuthorized || status == PHAuthorizationStatusLimited);
-    }];
+    void (^deliver)(PHAuthorizationStatus) = ^(PHAuthorizationStatus status) {
+        BOOL granted = status == PHAuthorizationStatusAuthorized || status == PHAuthorizationStatusLimited;
+        if (NSThread.isMainThread) completion(granted);
+        else dispatch_async(dispatch_get_main_queue(), ^{ completion(granted); });
+    };
+    PHAuthorizationStatus current = [PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelAddOnly];
+    if (current != PHAuthorizationStatusNotDetermined) {
+        deliver(current);
+        return;
+    }
+    [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:deliver];
 }
 
 static void YouModSaveVideoToPhotos(NSURL *fileURL, UIViewController *presenter, void (^completion)(BOOL success, NSError *error)) {
@@ -903,7 +914,9 @@ static void YouModHandlePostDownloadFile(NSURL *fileURL, BOOL isVideo, UIViewCon
     if (!fileURL) return;
     NSInteger action = YouModGetPostDownloadAction();
 
-    if (action == PostDownloadActionSaveToPhotos) {
+    if (action == PostDownloadActionKeep) {
+        YouModSendSuccess(LOC(@"SAVED_TO_DOWNLOADS"));
+    } else if (action == PostDownloadActionSaveToPhotos) {
         if (isVideo && YouModVideoFileCanSaveToPhotos(fileURL)) {
             YouModSaveVideoToPhotos(fileURL, presenter, ^(BOOL success, NSError *error) {
                 if (success) {
@@ -947,6 +960,8 @@ static void YouModHandlePostDownloadFile(NSURL *fileURL, BOOL isVideo, UIViewCon
 static void YouModHandlePostDownloadImage(UIImage *image, UIViewController *presenter) {
     if (!image) return;
     NSInteger action = YouModGetPostDownloadAction();
+    // Images aren't kept in the Downloads tab, so "Downloads only" asks instead.
+    if (action == PostDownloadActionKeep) action = PostDownloadActionAsk;
 
     if (action == PostDownloadActionSaveToPhotos) {
         YouModRequestPhotoAccess(^(BOOL granted) {
@@ -2075,7 +2090,7 @@ static NSString *YouModAudioOutputExtension(NSInteger output) {
         [self notifyChange];
         // While more downloads are waiting, don't stop the batch with a share
         // sheet each time - the files are in the Downloads tab.
-        if ([self queuedCount] > 0 && YouModGetPostDownloadAction() != PostDownloadActionSaveToPhotos) {
+        if ([self queuedCount] > 0 && YouModGetPostDownloadAction() != PostDownloadActionSaveToPhotos && YouModGetPostDownloadAction() != PostDownloadActionKeep) {
             YouModSendSuccess(LOC(@"SAVED_TO_DOWNLOADS"));
         } else {
             YouModHandlePostDownloadFile(finalURL, isVideo, presenter);

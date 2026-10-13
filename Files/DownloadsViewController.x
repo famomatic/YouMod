@@ -27,6 +27,7 @@ static NSString *YMDownloadsDuration(unsigned long long durationMs) {
 @property (nonatomic, copy) NSArray<YMDownloadItem *> *items;
 @property (nonatomic, copy) NSString *filter;
 @property (nonatomic, strong) NSCache<NSString *, UIImage *> *thumbnails;
+@property (nonatomic, assign) BOOL showsCloseButton; // presented modally (not in the tab)
 @end
 
 @implementation YMDownloadsViewController
@@ -40,7 +41,9 @@ static NSString *YMDownloadsDuration(unsigned long long durationMs) {
     self.title = LOC(@"DOWNLOADS");
     self.thumbnails = [NSCache new];
     self.tableView.rowHeight = 72;
-    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose target:self action:@selector(close)];
+    if (self.showsCloseButton) {
+        self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose target:self action:@selector(close)];
+    }
 
     UISearchController *search = [[UISearchController alloc] initWithSearchResultsController:nil];
     search.searchResultsUpdater = self;
@@ -221,9 +224,9 @@ static NSString *YMDownloadsDuration(unsigned long long durationMs) {
 
 - (void)openItemOnYouTube:(YMDownloadItem *)item {
     NSURL *url = [NSURL URLWithString:[@"youtube://" stringByAppendingString:item.videoID]];
-    [self.navigationController dismissViewControllerAnimated:YES completion:^{
-        [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil];
-    }];
+    void (^open)(void) = ^{ [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil]; };
+    if (self.showsCloseButton) [self.navigationController dismissViewControllerAnimated:YES completion:open];
+    else open();
 }
 
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -302,7 +305,82 @@ void YMPresentDownloadsViewController(UIViewController *presenter) {
     if (!presenter) return;
     UINavigationController *shown = [presenter isKindOfClass:UINavigationController.class] ? (UINavigationController *)presenter : presenter.navigationController;
     if ([shown.viewControllers.firstObject isKindOfClass:YMDownloadsViewController.class]) return;
-    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:[YMDownloadsViewController new]];
+    YMDownloadsViewController *downloads = [YMDownloadsViewController new];
+    downloads.showsCloseButton = YES;
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:downloads];
     nav.modalPresentationStyle = UIModalPresentationFullScreen;
     [presenter presentViewController:nav animated:YES completion:nil];
+}
+
+// Root of the Downloads tab. YouTube switches tabs by swapping the view controllers
+// of its own (bar-less) navigation controller, so the screen gets a navigation
+// controller of its own - for the title, search field and pushes - hosted as a
+// child. The pivot bar is drawn over the tab content, so its height is added to the
+// bottom safe area.
+@interface YMDownloadsTabRootViewController : UIViewController
+@property (nonatomic, strong) UINavigationController *contentNavigationController;
+@end
+
+@implementation YMDownloadsTabRootViewController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    self.contentNavigationController = [[UINavigationController alloc] initWithRootViewController:[YMDownloadsViewController new]];
+    [self addChildViewController:self.contentNavigationController];
+    self.contentNavigationController.view.frame = self.view.bounds;
+    self.contentNavigationController.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:self.contentNavigationController.view];
+    [self.contentNavigationController didMoveToParentViewController:self];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    CGFloat overlap = 0;
+    UIView *pivotBar = YMDownloadsTabPivotBarView();
+    if (pivotBar.window && pivotBar.window == self.view.window && !pivotBar.hidden && pivotBar.alpha > 0.01) {
+        CGRect barFrame = [pivotBar convertRect:pivotBar.bounds toView:self.view];
+        overlap = MAX(0, CGRectGetMaxY(self.view.bounds) - CGRectGetMinY(barFrame));
+        overlap = MAX(0, overlap - self.view.safeAreaInsets.bottom);
+    }
+    UIEdgeInsets insets = self.contentNavigationController.additionalSafeAreaInsets;
+    if (fabs(insets.bottom - overlap) > 0.5) {
+        insets.bottom = overlap;
+        self.contentNavigationController.additionalSafeAreaInsets = insets;
+    }
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self.view setNeedsLayout];
+}
+
+// Re-tapping the selected tab returns to the list and scrolls it to the top.
+- (void)ym_returnToTop {
+    UINavigationController *nav = self.contentNavigationController;
+    if (nav.viewControllers.count > 1) {
+        [nav popToRootViewControllerAnimated:YES];
+        return;
+    }
+    UITableViewController *list = (UITableViewController *)nav.viewControllers.firstObject;
+    if ([list isKindOfClass:UITableViewController.class]) {
+        UIScrollView *scroll = list.tableView;
+        [scroll setContentOffset:CGPointMake(0, -scroll.adjustedContentInset.top) animated:YES];
+    }
+}
+
+- (UIStatusBarStyle)preferredStatusBarStyle {
+    return self.contentNavigationController.preferredStatusBarStyle;
+}
+
+@end
+
+UIViewController *YMDownloadsTabViewController(void) {
+    static YMDownloadsTabRootViewController *tab;
+    if (!tab) tab = [YMDownloadsTabRootViewController new];
+    return tab;
+}
+
+void YMDownloadsTabReturnToTop(UIViewController *tab) {
+    if ([tab isKindOfClass:YMDownloadsTabRootViewController.class]) [(YMDownloadsTabRootViewController *)tab ym_returnToTop];
 }

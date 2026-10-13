@@ -52,3 +52,8 @@ extern void YMDownloadSaveVideoToPhotos(NSURL *fileURL, UIViewController *presen
 extern void YMDownloadShowToast(NSString *message, BOOL error);
 // Presents the Downloads screen (queue + library) full screen.
 extern void YMPresentDownloadsViewController(UIViewController *presenter);
+// Root view controller of the Downloads tab (one shared instance).
+extern UIViewController *YMDownloadsTabViewController(void);
+extern void YMDownloadsTabReturnToTop(UIViewController *tab);
+// The pivot bar currently on screen (set by Tabbar.x), for the tab's bottom inset.
+extern UIView *YMDownloadsTabPivotBarView(void);

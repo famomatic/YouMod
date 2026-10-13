@@ -57,6 +57,7 @@
 "POST_ACTION_SAVE_PHOTOS" = "保存到相册";
 "POST_ACTION_SHARE" = "分享";
 "POST_ACTION_ASK" = "询问";
+"POST_ACTION_KEEP" = "Downloads only";
 "ADD_SHORTS_DOWNLOAD" = "在 Shorts 中添加下载按钮";
 "ADD_SHORTS_DOWNLOAD_DESC" = "在 Shorts 播放界面添加下载按钮。";
 "DOWNLOAD_SHORTS" = "下载 Shorts";

@@ -57,6 +57,7 @@
 "POST_ACTION_SAVE_PHOTOS" = "사진 앱에 저장";
 "POST_ACTION_SHARE" = "공유";
 "POST_ACTION_ASK" = "매번 묻기";
+"POST_ACTION_KEEP" = "다운로드 탭에만";
 "ADD_SHORTS_DOWNLOAD" = "Shorts에 다운로드 버튼 추가";
 "ADD_SHORTS_DOWNLOAD_DESC" = "Shorts 동영상 오버레이에 다운로드 버튼을 추가합니다.";
 "DOWNLOAD_SHORTS" = "Shorts 다운로드";

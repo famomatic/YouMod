@@ -3,7 +3,7 @@
 #import "DownloadQueue.h"
 
 // The Downloads tab is YouMod's own screen, not a YouTube browse page: its pivot
-// item uses this identifier, and taps on it open YMPresentDownloadsViewController.
+// item uses this identifier and its content is YMDownloadsTabViewController.
 static NSString *const YMDownloadsPivotIdentifier = @"FEyoumod_downloads";
 static const int YMDownloadsIconType = 18;
 
@@ -179,6 +179,37 @@ static NSString *ymTitleForTabID(NSString *tabID) {
 }
 %end
 
+static __weak YTPivotBarViewController *ymPivotBarViewController;
+
+UIView *YMDownloadsTabPivotBarView(void) {
+    YTPivotBarViewController *pivot = ymPivotBarViewController;
+    if (!pivot.isViewLoaded) return nil;
+    return [pivot respondsToSelector:@selector(pivotBarView)] ? [pivot pivotBarView] : pivot.view;
+}
+
+static BOOL YMIsDownloadsItem(id item) {
+    return [item respondsToSelector:@selector(pivotIdentifier)] && [[item pivotIdentifier] isEqualToString:YMDownloadsPivotIdentifier];
+}
+
+static void YMCacheDownloadsTab(YTPivotBarViewController *pivot) {
+    Ivar ivar = class_getInstanceVariable(object_getClass(pivot), "_viewControllersCache");
+    NSMutableDictionary *cache = ivar ? object_getIvar(pivot, ivar) : nil;
+    if (![cache isKindOfClass:NSMutableDictionary.class]) return;
+    if (!cache[YMDownloadsPivotIdentifier]) cache[YMDownloadsPivotIdentifier] = @[YMDownloadsTabViewController()];
+}
+
+// Switches to the Downloads tab when it is in the bar; returns NO otherwise.
+static BOOL YMSelectDownloadsTab(YTPivotBarViewController *pivot) {
+    if (!pivot || ![pivot respondsToSelector:@selector(pivotBarItemForIdentifier:)]) return NO;
+    id item = [pivot pivotBarItemForIdentifier:YMDownloadsPivotIdentifier];
+    if (!item) return NO;
+    if (![pivot.pivotIdentifier isEqualToString:YMDownloadsPivotIdentifier]) {
+        YMCacheDownloadsTab(pivot);
+        [pivot selectItemWithPivotBarItem:item];
+    }
+    return YES;
+}
+
 static NSString *YMExtractYouTubeVideoID(NSString *urlString) {
     if (!urlString || urlString.length == 0) return nil;
 
@@ -309,7 +340,7 @@ static BOOL isGestureRegistered = NO;
                                                         image:[UIImage systemImageNamed:@"arrow.down.circle"]
                                                    identifier:nil
                                                       handler:^(__kindof UIAction * _Nonnull action) {
-            YMPresentDownloadsViewController(nil);
+            if (!YMSelectDownloadsTab(ymPivotBarViewController)) YMPresentDownloadsViewController(nil);
         }];
         return [UIMenu menuWithTitle:@"" children:@[tabBarAction, downloadsAction, openLinkAction]];
     }];
@@ -321,6 +352,7 @@ static BOOL isTabSelected = NO;
 %hook YTPivotBarViewController
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
+    ymPivotBarViewController = self;
     sbUpdateOverlayInsetForPivotBar();
     if (IS_ENABLED(ShortsOnly) && !isTabSelected) {
         [self selectItemWithPivotIdentifier:@"FEshorts"];
@@ -351,26 +383,45 @@ static BOOL isTabSelected = NO;
         isTabSelected = YES;
     }
 }
-// The Downloads tab opens YouMod's screen instead of navigating to a browse page.
+// The Downloads tab. YouTube switches tabs in -selectItemWithPivotBarItem:: it
+// caches the current tab's view controllers, then shows the cached stack of the
+// tapped tab (_viewControllersCache[pivotIdentifier]) or, with nothing cached,
+// loads the item's browse page. Keeping YouMod's screen in that cache makes the
+// Downloads item a real tab - selected in the bar and kept while switching -
+// without a browse page behind it.
 - (void)didTapItemWithRenderer:(YTIPivotBarItemRenderer *)renderer {
-    if ([renderer respondsToSelector:@selector(pivotIdentifier)] && [renderer.pivotIdentifier isEqualToString:YMDownloadsPivotIdentifier]) {
-        YMPresentDownloadsViewController(nil);
+    if (YMIsDownloadsItem(renderer)) {
+        if ([self.pivotIdentifier isEqualToString:YMDownloadsPivotIdentifier]) {
+            YMDownloadsTabReturnToTop(YMDownloadsTabViewController());
+            return;
+        }
+        YMCacheDownloadsTab(self);
+        [self selectItemWithPivotBarItem:renderer];
         return;
     }
+    %orig;
+}
+- (void)selectItemWithPivotBarItem:(id)item {
+    if (YMIsDownloadsItem(item)) YMCacheDownloadsTab(self);
     %orig;
 }
 // The item is built as a browse endpoint, so catch it on the navigation path too.
 - (BOOL)handlePivotBarNavigationCommand:(YTICommand *)command {
     if ([command respondsToSelector:@selector(browseEndpoint)] && [command.browseEndpoint.browseId isEqualToString:YMDownloadsPivotIdentifier]) {
-        YMPresentDownloadsViewController(nil);
+        YMSelectDownloadsTab(self);
         return YES;
     }
     return %orig;
 }
-// Never let YouTube navigate to the Downloads pseudo-tab (it has no browse page).
-- (void)selectItemWithPivotIdentifier:(NSString *)pivotIdentifier {
-    if ([pivotIdentifier isEqualToString:YMDownloadsPivotIdentifier]) return;
+// A cleared cache (account switch, memory warning) would send the next tap to the
+// nonexistent browse page.
+- (void)resetViewControllersCache {
     %orig;
+    YMCacheDownloadsTab(self);
+}
+- (void)resetViewControllersCacheForPivotIdentifiers:(id)identifiers {
+    %orig;
+    YMCacheDownloadsTab(self);
 }
 // Translucent tab bar
 - (BOOL)isFrostedPivotBarPermitted {

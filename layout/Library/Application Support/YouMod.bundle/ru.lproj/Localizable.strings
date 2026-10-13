@@ -57,6 +57,7 @@
 "POST_ACTION_SAVE_PHOTOS" = "Сохранить в Фото";
 "POST_ACTION_SHARE" = "Поделиться";
 "POST_ACTION_ASK" = "Спросить";
+"POST_ACTION_KEEP" = "Downloads only";
 "ADD_SHORTS_DOWNLOAD" = "Добавить кнопку загрузки в Shorts";
 "ADD_SHORTS_DOWNLOAD_DESC" = "Добавляет кнопку загрузки в интерфейс видео Shorts.";
 "DOWNLOAD_SHORTS" = "Скачать Shorts";

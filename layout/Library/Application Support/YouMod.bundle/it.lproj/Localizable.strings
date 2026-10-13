@@ -57,6 +57,7 @@
 "POST_ACTION_SAVE_PHOTOS" = "Salva in Foto";
 "POST_ACTION_SHARE" = "Condividi";
 "POST_ACTION_ASK" = "Chiedi";
+"POST_ACTION_KEEP" = "Downloads only";
 "ADD_SHORTS_DOWNLOAD" = "Aggiungi pulsante di download agli Shorts";
 "ADD_SHORTS_DOWNLOAD_DESC" = "Aggiunge un pulsante di download nell'overlay video degli Shorts.";
 "DOWNLOAD_SHORTS" = "Scarica Shorts";

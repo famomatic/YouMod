@@ -57,6 +57,7 @@
 "POST_ACTION_SAVE_PHOTOS" = "Lưu vào Ảnh";
 "POST_ACTION_SHARE" = "Chia sẻ";
 "POST_ACTION_ASK" = "Hỏi";
+"POST_ACTION_KEEP" = "Downloads only";
 "ADD_SHORTS_DOWNLOAD" = "Thêm nút tải xuống vào Shorts";
 "ADD_SHORTS_DOWNLOAD_DESC" = "Thêm nút tải xuống vào lớp phủ video Shorts.";
 "DOWNLOAD_SHORTS" = "Tải Shorts";

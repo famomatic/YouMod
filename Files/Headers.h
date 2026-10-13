@@ -120,6 +120,7 @@ extern void YMRegisterDefaults(void);
 #define PostDownloadActionSaveToPhotos 0
 #define PostDownloadActionShare 1
 #define PostDownloadActionAsk 2
+#define PostDownloadActionKeep 3 // only keep it in the Downloads tab (default)
 #define AddDownloadToShorts @"YouModAddDownloadToShorts"
 #define AudioPreferIndex @"YouModAudioPreferIndex"
 #define DownloadComment @"YouModDownloadComment"
@@ -425,6 +426,10 @@ typedef NS_ENUM(NSUInteger, GestureSection) {
 
 @interface YTPivotBarViewController : UIViewController
 - (void)selectItemWithPivotIdentifier:(id)pivotIndentifier;
+- (void)selectItemWithPivotBarItem:(id)item;
+- (id)pivotBarItemForIdentifier:(NSString *)pivotIdentifier;
+- (UIView *)pivotBarView;
+@property (nonatomic, readonly) NSString *pivotIdentifier;
 - (void)YouModReloadTabBar:(id)arg;
 @end
 

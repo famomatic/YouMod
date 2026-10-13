@@ -57,6 +57,7 @@
 "POST_ACTION_SAVE_PHOTOS" = "บันทึกลงคลังรูปภาพ";
 "POST_ACTION_SHARE" = "แชร์";
 "POST_ACTION_ASK" = "ถาม";
+"POST_ACTION_KEEP" = "Downloads only";
 "ADD_SHORTS_DOWNLOAD" = "เพิ่มปุ่มดาวน์โหลดไปยัง Shorts";
 "ADD_SHORTS_DOWNLOAD_DESC" = "เพิ่มปุ่มดาวน์โหลดไปยังโอเวอร์เลย์วิดีโอ Shorts";
 "DOWNLOAD_SHORTS" = "ดาวน์โหลด Shorts";

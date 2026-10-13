@@ -57,6 +57,7 @@
 "POST_ACTION_SAVE_PHOTOS" = "Fotoğraflar'a kaydet";
 "POST_ACTION_SHARE" = "Paylaş";
 "POST_ACTION_ASK" = "Sor";
+"POST_ACTION_KEEP" = "Downloads only";
 "ADD_SHORTS_DOWNLOAD" = "Shorts'a indirme butonu ekle";
 "ADD_SHORTS_DOWNLOAD_DESC" = "Shorts video katmanına bir indirme butonu ekler.";
 "DOWNLOAD_SHORTS" = "Shorts İndir";
