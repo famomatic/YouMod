@@ -705,3 +705,11 @@
 "COPY_LINK_AT_TIME" = "현재 시간 링크 복사";
 "NO_PAUSE_FULLSCREEN_PANEL" = "전체화면 댓글창에서 재생 유지";
 "NO_PAUSE_FULLSCREEN_PANEL_DESC" = "댓글 등의 패널을 전체화면으로 펼쳐도 영상을 일시정지하지 않습니다.";
+"SEARCH_DOWNLOADS_HINT" = "제목, 채널, 포맷 검색";
+"SORT_CHANNEL" = "채널순";
+"GROUP_TODAY" = "오늘";
+"GROUP_YESTERDAY" = "어제";
+"GROUP_THIS_WEEK" = "이번 주";
+"GROUP_THIS_MONTH" = "이번 달";
+"GROUP_EARLIER" = "이전";
+"MORE_FROM_CHANNEL" = "이 채널의 다운로드";

@@ -672,3 +672,11 @@
 "COPY_LINK_AT_TIME" = "Copy Link at Current Time";
 "NO_PAUSE_FULLSCREEN_PANEL" = "Keep playing with full-screen comments";
 "NO_PAUSE_FULLSCREEN_PANEL_DESC" = "Don't pause the video when comments or another panel is expanded to full screen.";
+"SEARCH_DOWNLOADS_HINT" = "Title, channel, format";
+"SORT_CHANNEL" = "Channel";
+"GROUP_TODAY" = "Today";
+"GROUP_YESTERDAY" = "Yesterday";
+"GROUP_THIS_WEEK" = "This Week";
+"GROUP_THIS_MONTH" = "This Month";
+"GROUP_EARLIER" = "Earlier";
+"MORE_FROM_CHANNEL" = "More from This Channel";

@@ -27,6 +27,7 @@ typedef NS_ENUM(NSInteger, YMDownloadsSort) {
     YMDownloadsSortTitle,
     YMDownloadsSortSize,
     YMDownloadsSortDuration,
+    YMDownloadsSortChannel,
 };
 
 static NSString *YMDownloadsByteCount(unsigned long long bytes) {
@@ -335,17 +336,125 @@ static const CGFloat YMRowThumbWidth = 156;
 
 @end
 
+#pragma mark - Filter chips + sort bar
+
+// The bar above the list: YouTube-style filter chips (with counts) on the left,
+// the current sort as a pull-down button on the right. Laid out from its own
+// width, so it fills the list whatever screen or container it is in.
+@interface YMDownloadsChipBar : UIView
+@property (nonatomic, strong) UIScrollView *scroll;
+@property (nonatomic, strong) NSArray<UIButton *> *chips;
+@property (nonatomic, strong) UIButton *sortButton;
+@property (nonatomic, assign) NSInteger selectedIndex;
+@property (nonatomic, copy) void (^selectionHandler)(NSInteger index);
+@end
+
+@implementation YMDownloadsChipBar
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    if ((self = [super initWithFrame:frame])) {
+        self.backgroundColor = UIColor.systemBackgroundColor;
+        self.scroll = [UIScrollView new];
+        self.scroll.showsHorizontalScrollIndicator = NO;
+        self.scroll.alwaysBounceHorizontal = YES;
+        [self addSubview:self.scroll];
+        NSMutableArray *chips = [NSMutableArray array];
+        for (NSInteger i = 0; i < 3; i++) {
+            UIButton *chip = [UIButton buttonWithType:UIButtonTypeCustom];
+            chip.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+            chip.layer.cornerRadius = 8;
+            chip.contentEdgeInsets = UIEdgeInsetsMake(0, 12, 0, 12);
+            chip.tag = i;
+            [chip addTarget:self action:@selector(chipTapped:) forControlEvents:UIControlEventTouchUpInside];
+            [self.scroll addSubview:chip];
+            [chips addObject:chip];
+        }
+        self.chips = chips;
+        self.sortButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        self.sortButton.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+        self.sortButton.tintColor = UIColor.labelColor;
+        self.sortButton.showsMenuAsPrimaryAction = YES;
+        self.sortButton.semanticContentAttribute = UISemanticContentAttributeForceRightToLeft;
+        [self.sortButton setImage:YMDSymbol(@"chevron.down", 11, UIImageSymbolWeightBold) forState:UIControlStateNormal];
+        self.sortButton.imageEdgeInsets = UIEdgeInsetsMake(0, 4, 0, -4);
+        [self addSubview:self.sortButton];
+        UIView *hairline = [UIView new];
+        hairline.tag = 99;
+        hairline.backgroundColor = UIColor.separatorColor;
+        [self addSubview:hairline];
+    }
+    return self;
+}
+
+- (void)chipTapped:(UIButton *)chip {
+    if (self.selectedIndex == chip.tag) return;
+    self.selectedIndex = chip.tag;
+    [[UISelectionFeedbackGenerator new] selectionChanged];
+    [self refreshChipStyles];
+    if (self.selectionHandler) self.selectionHandler(chip.tag);
+}
+
+- (void)setTitles:(NSArray<NSString *> *)titles {
+    [titles enumerateObjectsUsingBlock:^(NSString *title, NSUInteger i, BOOL *stop) {
+        if (i < self.chips.count) [self.chips[i] setTitle:title forState:UIControlStateNormal];
+    }];
+    [self refreshChipStyles];
+    [self setNeedsLayout];
+}
+
+- (void)refreshChipStyles {
+    for (UIButton *chip in self.chips) {
+        BOOL selected = chip.tag == self.selectedIndex;
+        chip.backgroundColor = selected ? UIColor.labelColor : UIColor.tertiarySystemFillColor;
+        [chip setTitleColor:selected ? UIColor.systemBackgroundColor : UIColor.labelColor forState:UIControlStateNormal];
+    }
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previous {
+    [super traitCollectionDidChange:previous];
+    [self refreshChipStyles];
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat w = self.bounds.size.width, h = self.bounds.size.height;
+    CGFloat inset = 16, chipH = 32;
+    CGSize sortSize = [self.sortButton sizeThatFits:CGSizeMake(200, chipH)];
+    CGFloat sortW = MIN(sortSize.width + 8, w * 0.4);
+    self.sortButton.frame = CGRectMake(w - inset - sortW, (h - chipH) / 2, sortW, chipH);
+    self.scroll.frame = CGRectMake(0, 0, CGRectGetMinX(self.sortButton.frame) - 4, h);
+    CGFloat x = inset;
+    for (UIButton *chip in self.chips) {
+        CGFloat cw = ceil([chip sizeThatFits:CGSizeMake(200, chipH)].width);
+        chip.frame = CGRectMake(x, (h - chipH) / 2, cw, chipH);
+        x += cw + 8;
+    }
+    self.scroll.contentSize = CGSizeMake(x - 8 + inset, h);
+    [self viewWithTag:99].frame = CGRectMake(0, h - 1.0 / UIScreen.mainScreen.scale, w, 1.0 / UIScreen.mainScreen.scale);
+}
+
+@end
+
 #pragma mark - List
 
-@interface YMDownloadsViewController : UITableViewController <UISearchResultsUpdating>
+// One section of the list: the download queue, or a group of finished downloads.
+@interface YMDownloadsSectionModel : NSObject
+@property (nonatomic, copy) NSString *title;
+@property (nonatomic, copy) NSArray<YMDownloadJob *> *jobs;   // queue section
+@property (nonatomic, copy) NSArray<YMDownloadItem *> *items; // library sections
+@end
+@implementation YMDownloadsSectionModel @end
+
+@interface YMDownloadsViewController : UITableViewController <UISearchResultsUpdating, UISearchBarDelegate>
 @property (nonatomic, copy) NSArray<YMDownloadJob *> *jobs;
-@property (nonatomic, copy) NSArray<YMDownloadItem *> *items;
+@property (nonatomic, copy) NSArray<YMDownloadItem *> *items;       // all shown items, display order
+@property (nonatomic, copy) NSArray<YMDownloadsSectionModel *> *sections;
 @property (nonatomic, copy) NSString *filter;
 @property (nonatomic, copy) NSString *jobsSignature;
 @property (nonatomic, assign) YMDownloadsFilter typeFilter;
 @property (nonatomic, assign) BOOL showsCloseButton; // presented modally (not in the tab)
-@property (nonatomic, strong) UISegmentedControl *segments;
-@property (nonatomic, strong) UIView *emptyView;
+@property (nonatomic, strong) YMDownloadsChipBar *chipBar;
+@property (nonatomic, strong) UILabel *footerLabel;
 @end
 
 @implementation YMDownloadsViewController
@@ -357,11 +466,13 @@ static const CGFloat YMRowThumbWidth = 156;
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = LOC(@"DOWNLOADS");
-    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+    self.navigationController.navigationBar.prefersLargeTitles = YES;
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAlways;
     self.tableView.backgroundColor = UIColor.systemBackgroundColor;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.rowHeight = round(YMRowThumbWidth * 9 / 16) + 16;
     self.tableView.allowsMultipleSelectionDuringEditing = YES;
+    self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
     if (@available(iOS 15.0, *)) self.tableView.sectionHeaderTopPadding = 0;
     [self.tableView registerClass:YMDownloadItemCell.class forCellReuseIdentifier:@"item"];
     [self.tableView registerClass:YMDownloadJobCell.class forCellReuseIdentifier:@"job"];
@@ -371,21 +482,29 @@ static const CGFloat YMRowThumbWidth = 156;
     }
     [self updateNavigationItems];
 
+    // Always visible (it used to hide while scrolling, i.e. almost always in the tab).
     UISearchController *search = [[UISearchController alloc] initWithSearchResultsController:nil];
     search.searchResultsUpdater = self;
     search.obscuresBackgroundDuringPresentation = NO;
-    search.searchBar.placeholder = LOC(@"SEARCH_DOWNLOADS");
+    search.searchBar.placeholder = LOC(@"SEARCH_DOWNLOADS_HINT");
+    search.searchBar.delegate = self;
     self.navigationItem.searchController = search;
-    self.navigationItem.hidesSearchBarWhenScrolling = YES;
+    self.navigationItem.hidesSearchBarWhenScrolling = NO;
+    self.definesPresentationContext = YES;
 
-    self.segments = [[UISegmentedControl alloc] initWithItems:@[LOC(@"DOWNLOADS_FILTER_ALL"), LOC(@"DOWNLOADS_FILTER_VIDEOS"), LOC(@"DOWNLOADS_FILTER_AUDIO")]];
-    self.segments.selectedSegmentIndex = 0;
-    [self.segments addTarget:self action:@selector(segmentChanged) forControlEvents:UIControlEventValueChanged];
-    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 48)];
-    self.segments.frame = CGRectMake(16, 6, 288, 32);
-    self.segments.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    [header addSubview:self.segments];
-    self.tableView.tableHeaderView = header;
+    __weak typeof(self) weakSelf = self;
+    self.chipBar = [[YMDownloadsChipBar alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 52)];
+    self.chipBar.selectionHandler = ^(NSInteger index) {
+        weakSelf.typeFilter = index;
+        [weakSelf reloadData];
+    };
+    self.tableView.tableHeaderView = self.chipBar;
+
+    self.footerLabel = [UILabel new];
+    self.footerLabel.font = [UIFont systemFontOfSize:12];
+    self.footerLabel.textColor = UIColor.secondaryLabelColor;
+    self.footerLabel.textAlignment = NSTextAlignmentCenter;
+    self.footerLabel.numberOfLines = 0;
 
     self.refreshControl = [UIRefreshControl new];
     [self.refreshControl addTarget:self action:@selector(refreshPulled) forControlEvents:UIControlEventValueChanged];
@@ -396,6 +515,19 @@ static const CGFloat YMRowThumbWidth = 156;
     [center addObserver:self selector:@selector(playbackChanged) name:YMLocalPlaybackItemDidChangeNotification object:nil];
     [[YMDownloadLibrary sharedLibrary] reload];
     [self reloadData];
+}
+
+// Table header/footer views keep the frame they were given; size them to the
+// table so the chips and the footer span the real width.
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    CGFloat width = self.tableView.bounds.size.width;
+    if (fabs(self.chipBar.frame.size.width - width) > 0.5) {
+        self.chipBar.frame = CGRectMake(0, 0, width, 52);
+        self.tableView.tableHeaderView = self.chipBar;
+    }
+    UIView *footer = self.tableView.tableFooterView;
+    if (footer && fabs(footer.frame.size.width - width) > 0.5) [self layoutFooter];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -418,41 +550,51 @@ static const CGFloat YMRowThumbWidth = 156;
     [self.refreshControl endRefreshing];
 }
 
-- (void)segmentChanged {
-    self.typeFilter = self.segments.selectedSegmentIndex;
-    [self reloadData];
-}
-
-#pragma mark Navigation items
+#pragma mark Sorting
 
 - (YMDownloadsSort)sortMode {
-    return [NSUserDefaults.standardUserDefaults integerForKey:YMDownloadsSortKey];
+    NSInteger mode = [NSUserDefaults.standardUserDefaults integerForKey:YMDownloadsSortKey];
+    return mode >= YMDownloadsSortNewest && mode <= YMDownloadsSortChannel ? mode : YMDownloadsSortNewest;
+}
+
+- (NSArray<NSString *> *)sortTitles {
+    return @[LOC(@"SORT_NEWEST"), LOC(@"SORT_OLDEST"), LOC(@"SORT_TITLE"), LOC(@"SORT_SIZE"), LOC(@"SORT_DURATION"), LOC(@"SORT_CHANNEL")];
 }
 
 - (UIMenu *)sortMenu {
-    NSArray *titles = @[LOC(@"SORT_NEWEST"), LOC(@"SORT_OLDEST"), LOC(@"SORT_TITLE"), LOC(@"SORT_SIZE"), LOC(@"SORT_DURATION")];
+    NSArray *symbols = @[@"calendar", @"calendar", @"textformat", @"internaldrive", @"clock", @"person"];
+    NSArray<NSNumber *> *order = @[@(YMDownloadsSortNewest), @(YMDownloadsSortOldest), @(YMDownloadsSortTitle), @(YMDownloadsSortChannel), @(YMDownloadsSortSize), @(YMDownloadsSortDuration)];
     NSMutableArray *actions = [NSMutableArray array];
-    [titles enumerateObjectsUsingBlock:^(NSString *title, NSUInteger index, BOOL *stop) {
-        UIAction *action = [UIAction actionWithTitle:title image:nil identifier:nil handler:^(UIAction *a) {
-            [NSUserDefaults.standardUserDefaults setInteger:index forKey:YMDownloadsSortKey];
-            [self updateNavigationItems];
-            [self reloadData];
+    for (NSNumber *value in order) {
+        NSInteger mode = value.integerValue;
+        __weak typeof(self) weakSelf = self;
+        UIAction *action = [UIAction actionWithTitle:[self sortTitles][mode] image:[UIImage systemImageNamed:symbols[mode]] identifier:nil handler:^(UIAction *a) {
+            [NSUserDefaults.standardUserDefaults setInteger:mode forKey:YMDownloadsSortKey];
+            [weakSelf reloadData];
+            [weakSelf scrollToTop];
         }];
-        if ((NSInteger)index == [self sortMode]) action.state = UIMenuElementStateOn;
+        if (mode == [self sortMode]) action.state = UIMenuElementStateOn;
         [actions addObject:action];
-    }];
+    }
     return [UIMenu menuWithTitle:LOC(@"SORT") children:actions];
 }
+
+- (void)updateSortButton {
+    [self.chipBar.sortButton setTitle:[self sortTitles][[self sortMode]] forState:UIControlStateNormal];
+    self.chipBar.sortButton.menu = [self sortMenu];
+    [self.chipBar setNeedsLayout];
+}
+
+#pragma mark Navigation items / selection
 
 - (void)updateNavigationItems {
     if (self.tableView.isEditing) {
         self.navigationItem.rightBarButtonItems = @[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(toggleEditing)]];
         return;
     }
-    UIBarButtonItem *sort = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.up.arrow.down"] menu:[self sortMenu]];
     UIBarButtonItem *select = [[UIBarButtonItem alloc] initWithTitle:LOC(@"SELECT") style:UIBarButtonItemStylePlain target:self action:@selector(toggleEditing)];
     select.enabled = self.items.count > 0;
-    self.navigationItem.rightBarButtonItems = @[select, sort];
+    self.navigationItem.rightBarButtonItems = @[select];
 }
 
 - (void)toggleEditing {
@@ -464,10 +606,23 @@ static const CGFloat YMRowThumbWidth = 156;
     [self.navigationController.parentViewController.view setNeedsLayout];
 }
 
+- (YMDownloadItem *)itemAtIndexPath:(NSIndexPath *)path {
+    if (path.section >= (NSInteger)self.sections.count) return nil;
+    NSArray *items = self.sections[path.section].items;
+    return path.row < (NSInteger)items.count ? items[path.row] : nil;
+}
+
+- (YMDownloadJob *)jobAtIndexPath:(NSIndexPath *)path {
+    if (path.section >= (NSInteger)self.sections.count) return nil;
+    NSArray *jobs = self.sections[path.section].jobs;
+    return path.row < (NSInteger)jobs.count ? jobs[path.row] : nil;
+}
+
 - (NSArray<YMDownloadItem *> *)selectedItems {
     NSMutableArray *selected = [NSMutableArray array];
     for (NSIndexPath *path in self.tableView.indexPathsForSelectedRows) {
-        if (path.section == YMDownloadsSectionLibrary && path.row < (NSInteger)self.items.count) [selected addObject:self.items[path.row]];
+        YMDownloadItem *item = [self itemAtIndexPath:path];
+        if (item) [selected addObject:item];
     }
     return selected;
 }
@@ -476,21 +631,24 @@ static const CGFloat YMRowThumbWidth = 156;
     NSArray *selected = [self selectedItems];
     UIBarButtonItem *share = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction target:self action:@selector(shareSelected)];
     share.enabled = selected.count > 0;
-    UIBarButtonItem *all = [[UIBarButtonItem alloc] initWithTitle:selected.count == self.items.count && selected.count ? LOC(@"DESELECT_ALL") : LOC(@"SELECT_ALL") style:UIBarButtonItemStylePlain target:self action:@selector(toggleSelectAll)];
+    BOOL all = selected.count && selected.count == self.items.count;
+    UIBarButtonItem *toggleAll = [[UIBarButtonItem alloc] initWithTitle:all ? LOC(@"DESELECT_ALL") : LOC(@"SELECT_ALL") style:UIBarButtonItemStylePlain target:self action:@selector(toggleSelectAll)];
     NSString *deleteTitle = selected.count ? [NSString stringWithFormat:LOC(@"DELETE_COUNT"), (unsigned long)selected.count] : LOC(@"DELETE");
     UIBarButtonItem *delete = [[UIBarButtonItem alloc] initWithTitle:deleteTitle style:UIBarButtonItemStylePlain target:self action:@selector(deleteSelected)];
     delete.tintColor = UIColor.systemRedColor;
     delete.enabled = selected.count > 0;
     UIBarButtonItem *flex = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
-    self.toolbarItems = @[all, flex, share, flex, delete];
+    self.toolbarItems = @[toggleAll, flex, share, flex, delete];
 }
 
 - (void)toggleSelectAll {
     BOOL selectAll = [self selectedItems].count != self.items.count;
-    for (NSInteger row = 0; row < (NSInteger)self.items.count; row++) {
-        NSIndexPath *path = [NSIndexPath indexPathForRow:row inSection:YMDownloadsSectionLibrary];
-        if (selectAll) [self.tableView selectRowAtIndexPath:path animated:NO scrollPosition:UITableViewScrollPositionNone];
-        else [self.tableView deselectRowAtIndexPath:path animated:NO];
+    for (NSInteger section = 0; section < (NSInteger)self.sections.count; section++) {
+        for (NSInteger row = 0; row < (NSInteger)self.sections[section].items.count; row++) {
+            NSIndexPath *path = [NSIndexPath indexPathForRow:row inSection:section];
+            if (selectAll) [self.tableView selectRowAtIndexPath:path animated:NO scrollPosition:UITableViewScrollPositionNone];
+            else [self.tableView deselectRowAtIndexPath:path animated:NO];
+        }
     }
     [self updateToolbar];
 }
@@ -520,9 +678,22 @@ static const CGFloat YMRowThumbWidth = 156;
 
 #pragma mark Data
 
-- (BOOL)matchesFilter:(NSString *)title author:(NSString *)author {
+// Every word of the query must appear somewhere in the title, channel, format,
+// file name or video ID - case and accent insensitive, any order.
+- (BOOL)matchesQuery:(NSArray<NSString *> *)fields {
     if (self.filter.length == 0) return YES;
-    return [title localizedCaseInsensitiveContainsString:self.filter] || [author localizedCaseInsensitiveContainsString:self.filter];
+    NSString *haystack = [[fields filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"length > 0"]] componentsJoinedByString:@" "];
+    NSStringCompareOptions options = NSCaseInsensitiveSearch | NSDiacriticInsensitiveSearch | NSWidthInsensitiveSearch;
+    for (NSString *word in [self.filter componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceCharacterSet]) {
+        if (word.length && [haystack rangeOfString:word options:options].location == NSNotFound) return NO;
+    }
+    return YES;
+}
+
+- (BOOL)itemPassesFilters:(YMDownloadItem *)item {
+    if (self.typeFilter == YMDownloadsFilterVideos && !item.isVideo) return NO;
+    if (self.typeFilter == YMDownloadsFilterAudio && item.isVideo) return NO;
+    return [self matchesQuery:@[item.title ?: @"", item.author ?: @"", item.formatSummary ?: @"", item.fileName ?: @"", item.videoID ?: @""]];
 }
 
 - (NSString *)signatureForJobs:(NSArray<YMDownloadJob *> *)jobs {
@@ -536,27 +707,71 @@ static const CGFloat YMRowThumbWidth = 156;
     for (YMDownloadJob *job in [YMDownloadQueue sharedQueue].jobs) {
         if (self.typeFilter == YMDownloadsFilterVideos && !job.isVideo) continue;
         if (self.typeFilter == YMDownloadsFilterAudio && job.isVideo) continue;
-        if ([self matchesFilter:job.title author:job.author]) [jobs addObject:job];
+        if ([self matchesQuery:@[job.title ?: @"", job.author ?: @"", job.formatSummary ?: @""]]) [jobs addObject:job];
     }
     return jobs;
+}
+
+// Newest/oldest group by day buckets; other sorts are one flat list.
+- (NSArray<YMDownloadsSectionModel *> *)groupedSectionsForItems:(NSArray<YMDownloadItem *> *)items {
+    YMDownloadsSort sort = [self sortMode];
+    if (sort != YMDownloadsSortNewest && sort != YMDownloadsSortOldest) {
+        YMDownloadsSectionModel *section = [YMDownloadsSectionModel new];
+        section.items = items;
+        return items.count ? @[section] : @[];
+    }
+    NSCalendar *calendar = NSCalendar.currentCalendar;
+    NSDate *startOfToday = [calendar startOfDayForDate:NSDate.date];
+    NSArray *titles = @[LOC(@"GROUP_TODAY"), LOC(@"GROUP_YESTERDAY"), LOC(@"GROUP_THIS_WEEK"), LOC(@"GROUP_THIS_MONTH"), LOC(@"GROUP_EARLIER")];
+    NSMutableArray<NSMutableArray *> *buckets = [NSMutableArray array];
+    for (NSUInteger i = 0; i < titles.count; i++) [buckets addObject:[NSMutableArray array]];
+    for (YMDownloadItem *item in items) {
+        NSDate *date = [NSDate dateWithTimeIntervalSince1970:item.createdAt];
+        NSInteger days = [calendar components:NSCalendarUnitDay fromDate:[calendar startOfDayForDate:date] toDate:startOfToday options:0].day;
+        NSUInteger bucket = days <= 0 ? 0 : (days == 1 ? 1 : (days < 7 ? 2 : (days < 30 ? 3 : 4)));
+        [buckets[bucket] addObject:item];
+    }
+    NSMutableArray *sections = [NSMutableArray array];
+    NSArray *indexes = sort == YMDownloadsSortNewest ? @[@0, @1, @2, @3, @4] : @[@4, @3, @2, @1, @0];
+    for (NSNumber *index in indexes) {
+        if (!buckets[index.integerValue].count) continue;
+        YMDownloadsSectionModel *section = [YMDownloadsSectionModel new];
+        section.title = titles[index.integerValue];
+        section.items = buckets[index.integerValue];
+        [sections addObject:section];
+    }
+    return sections;
 }
 
 - (void)reloadData {
     self.jobs = [self filteredJobs];
     self.jobsSignature = [self signatureForJobs:self.jobs];
 
+    NSArray<YMDownloadItem *> *all = [YMDownloadLibrary sharedLibrary].items;
+    NSUInteger videos = 0, audio = 0;
+    for (YMDownloadItem *item in all) item.isVideo ? videos++ : audio++;
+    [self.chipBar setTitles:@[[NSString stringWithFormat:@"%@ %lu", LOC(@"DOWNLOADS_FILTER_ALL"), (unsigned long)all.count],
+                              [NSString stringWithFormat:@"%@ %lu", LOC(@"DOWNLOADS_FILTER_VIDEOS"), (unsigned long)videos],
+                              [NSString stringWithFormat:@"%@ %lu", LOC(@"DOWNLOADS_FILTER_AUDIO"), (unsigned long)audio]]];
+    [self updateSortButton];
+
     NSMutableArray *items = [NSMutableArray array];
-    for (YMDownloadItem *item in [YMDownloadLibrary sharedLibrary].items) {
-        if (self.typeFilter == YMDownloadsFilterVideos && !item.isVideo) continue;
-        if (self.typeFilter == YMDownloadsFilterAudio && item.isVideo) continue;
-        if ([self matchesFilter:item.title author:item.author]) [items addObject:item];
-    }
+    for (YMDownloadItem *item in all) if ([self itemPassesFilters:item]) [items addObject:item];
+    NSStringCompareOptions textOptions = NSCaseInsensitiveSearch | NSNumericSearch | NSDiacriticInsensitiveSearch;
     switch ([self sortMode]) {
         case YMDownloadsSortOldest:
             [items sortUsingComparator:^NSComparisonResult(YMDownloadItem *a, YMDownloadItem *b) { return [@(a.createdAt) compare:@(b.createdAt)]; }];
             break;
         case YMDownloadsSortTitle:
-            [items sortUsingComparator:^NSComparisonResult(YMDownloadItem *a, YMDownloadItem *b) { return [a.title ?: @"" localizedStandardCompare:b.title ?: @""]; }];
+            [items sortUsingComparator:^NSComparisonResult(YMDownloadItem *a, YMDownloadItem *b) {
+                return [a.title ?: @"" compare:b.title ?: @"" options:textOptions range:NSMakeRange(0, (a.title ?: @"").length) locale:NSLocale.currentLocale];
+            }];
+            break;
+        case YMDownloadsSortChannel:
+            [items sortUsingComparator:^NSComparisonResult(YMDownloadItem *a, YMDownloadItem *b) {
+                NSComparisonResult result = [a.author ?: @"" compare:b.author ?: @"" options:textOptions range:NSMakeRange(0, (a.author ?: @"").length) locale:NSLocale.currentLocale];
+                return result != NSOrderedSame ? result : [@(b.createdAt) compare:@(a.createdAt)];
+            }];
             break;
         case YMDownloadsSortSize:
             [items sortUsingComparator:^NSComparisonResult(YMDownloadItem *a, YMDownloadItem *b) { return [@(b.fileSize) compare:@(a.fileSize)]; }];
@@ -565,58 +780,100 @@ static const CGFloat YMRowThumbWidth = 156;
             [items sortUsingComparator:^NSComparisonResult(YMDownloadItem *a, YMDownloadItem *b) { return [@(b.durationMs) compare:@(a.durationMs)]; }];
             break;
         default:
-            break; // the library is newest first
+            [items sortUsingComparator:^NSComparisonResult(YMDownloadItem *a, YMDownloadItem *b) { return [@(b.createdAt) compare:@(a.createdAt)]; }];
+            break;
     }
-    self.items = items;
+
+    NSMutableArray *sections = [NSMutableArray array];
+    if (self.jobs.count) {
+        YMDownloadsSectionModel *queue = [YMDownloadsSectionModel new];
+        queue.title = [NSString stringWithFormat:@"%@ · %lu", LOC(@"DOWNLOADS_IN_PROGRESS"), (unsigned long)self.jobs.count];
+        queue.jobs = self.jobs;
+        [sections addObject:queue];
+    }
+    NSArray<YMDownloadsSectionModel *> *groups = [self groupedSectionsForItems:items];
+    // A flat list under the queue still gets a heading, to tell the two apart.
+    if (self.jobs.count && groups.count == 1 && !groups.firstObject.title) groups.firstObject.title = LOC(@"DOWNLOADS_DONE");
+    [sections addObjectsFromArray:groups];
+    NSMutableArray *ordered = [NSMutableArray array];
+    for (YMDownloadsSectionModel *section in groups) [ordered addObjectsFromArray:section.items];
+    self.items = ordered;
+    self.sections = sections;
+
     [self.tableView reloadData];
+    [self updateFooter];
     [self updateEmptyState];
     if (!self.tableView.isEditing) [self updateNavigationItems];
     else [self updateToolbar];
+}
+
+- (void)updateFooter {
+    if (!self.items.count) {
+        self.tableView.tableFooterView = nil;
+        return;
+    }
+    unsigned long long total = 0;
+    for (YMDownloadItem *item in self.items) total += item.fileSize;
+    NSString *summary = [NSString stringWithFormat:LOC(@"DOWNLOADS_STORAGE"), (unsigned long)self.items.count, YMDownloadsByteCount(total)];
+    NSDictionary *values = [[NSURL fileURLWithPath:NSHomeDirectory()] resourceValuesForKeys:@[NSURLVolumeAvailableCapacityForImportantUsageKey] error:nil];
+    NSNumber *free = values[NSURLVolumeAvailableCapacityForImportantUsageKey];
+    if (free) summary = [summary stringByAppendingFormat:@" · %@", [NSString stringWithFormat:LOC(@"DOWNLOADS_FREE_SPACE"), YMDownloadsByteCount(free.unsignedLongLongValue)]];
+    self.footerLabel.text = summary;
+    [self layoutFooter];
+}
+
+- (void)layoutFooter {
+    CGFloat width = self.tableView.bounds.size.width;
+    CGSize size = [self.footerLabel sizeThatFits:CGSizeMake(width - 32, CGFLOAT_MAX)];
+    UIView *footer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, size.height + 32)];
+    self.footerLabel.frame = CGRectMake(16, 12, width - 32, size.height);
+    [footer addSubview:self.footerLabel];
+    self.tableView.tableFooterView = footer;
 }
 
 // Progress ticks only refresh the visible job rows, so swipes and taps on the list
 // aren't interrupted several times a second.
 - (void)queueChanged {
     NSArray *jobs = [self filteredJobs];
-    NSString *signature = [self signatureForJobs:jobs];
-    if (![signature isEqualToString:self.jobsSignature]) {
+    if (![[self signatureForJobs:jobs] isEqualToString:self.jobsSignature]) {
         [self reloadData];
         return;
     }
     for (NSIndexPath *path in self.tableView.indexPathsForVisibleRows) {
-        if (path.section != YMDownloadsSectionQueue || path.row >= (NSInteger)self.jobs.count) continue;
+        YMDownloadJob *job = [self jobAtIndexPath:path];
         YMDownloadJobCell *cell = (YMDownloadJobCell *)[self.tableView cellForRowAtIndexPath:path];
-        if ([cell isKindOfClass:YMDownloadJobCell.class]) [cell configureWithJob:self.jobs[path.row]];
+        if (job && [cell isKindOfClass:YMDownloadJobCell.class]) [cell configureWithJob:job];
     }
 }
 
 - (void)playbackChanged {
     for (NSIndexPath *path in self.tableView.indexPathsForVisibleRows) {
-        if (path.section != YMDownloadsSectionLibrary) continue;
+        YMDownloadItem *item = [self itemAtIndexPath:path];
         YMDownloadItemCell *cell = (YMDownloadItemCell *)[self.tableView cellForRowAtIndexPath:path];
-        if ([cell isKindOfClass:YMDownloadItemCell.class]) [self configureItemCell:cell item:self.items[path.row]];
+        if (item && [cell isKindOfClass:YMDownloadItemCell.class]) [self configureItemCell:cell item:item];
     }
 }
 
 - (void)updateEmptyState {
-    BOOL empty = self.jobs.count == 0 && self.items.count == 0;
+    BOOL empty = self.sections.count == 0;
     if (!empty) {
         self.tableView.backgroundView = nil;
         return;
     }
+    BOOL searching = self.filter.length > 0 || self.typeFilter != YMDownloadsFilterAll;
     UIView *container = [UIView new];
     UIStackView *stack = [UIStackView new];
     stack.axis = UILayoutConstraintAxisVertical;
     stack.alignment = UIStackViewAlignmentCenter;
     stack.spacing = 10;
     stack.translatesAutoresizingMaskIntoConstraints = NO;
-    UIImageView *icon = [[UIImageView alloc] initWithImage:YMDSymbol(self.filter.length ? @"magnifyingglass" : @"arrow.down.circle", 52, UIImageSymbolWeightLight)];
+    UIImageView *icon = [[UIImageView alloc] initWithImage:YMDSymbol(searching ? @"magnifyingglass" : @"arrow.down.circle", 52, UIImageSymbolWeightLight)];
     icon.tintColor = UIColor.tertiaryLabelColor;
     UILabel *title = [UILabel new];
-    title.text = self.filter.length ? LOC(@"DOWNLOADS_NO_RESULTS") : LOC(@"DOWNLOADS_EMPTY_TITLE");
+    title.text = searching ? LOC(@"DOWNLOADS_NO_RESULTS") : LOC(@"DOWNLOADS_EMPTY_TITLE");
     title.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
     UILabel *message = [UILabel new];
-    message.text = self.filter.length ? nil : LOC(@"DOWNLOADS_EMPTY");
+    message.text = searching ? nil : LOC(@"DOWNLOADS_EMPTY");
     message.font = [UIFont systemFontOfSize:14];
     message.textColor = UIColor.secondaryLabelColor;
     message.textAlignment = NSTextAlignmentCenter;
@@ -628,37 +885,43 @@ static const CGFloat YMRowThumbWidth = 156;
     [container addSubview:stack];
     [NSLayoutConstraint activateConstraints:@[
         [stack.centerXAnchor constraintEqualToAnchor:container.centerXAnchor],
-        [stack.centerYAnchor constraintEqualToAnchor:container.centerYAnchor constant:-20],
+        [stack.centerYAnchor constraintEqualToAnchor:container.centerYAnchor constant:20],
         [stack.widthAnchor constraintLessThanOrEqualToAnchor:container.widthAnchor constant:-64],
     ]];
     self.tableView.backgroundView = container;
 }
 
 - (void)updateSearchResultsForSearchController:(UISearchController *)searchController {
-    self.filter = [searchController.searchBar.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+    NSString *text = [searchController.searchBar.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+    if ([text isEqualToString:self.filter ?: @""]) return;
+    self.filter = text;
     [self reloadData];
+}
+
+- (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
+    [searchBar resignFirstResponder];
 }
 
 #pragma mark Table
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 2;
+    return self.sections.count;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return section == YMDownloadsSectionQueue ? self.jobs.count : self.items.count;
+    YMDownloadsSectionModel *model = self.sections[section];
+    return model.jobs ? model.jobs.count : model.items.count;
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-    NSString *title = nil;
-    if (section == YMDownloadsSectionQueue && self.jobs.count) title = [NSString stringWithFormat:@"%@ · %lu", LOC(@"DOWNLOADS_IN_PROGRESS"), (unsigned long)self.jobs.count];
-    if (section == YMDownloadsSectionLibrary && self.items.count && self.jobs.count) title = LOC(@"DOWNLOADS_DONE");
+    NSString *title = self.sections[section].title;
     if (!title) return nil;
     UITableViewHeaderFooterView *header = [tableView dequeueReusableHeaderFooterViewWithIdentifier:@"header"] ?: [[UITableViewHeaderFooterView alloc] initWithReuseIdentifier:@"header"];
     UIListContentConfiguration *config = [UIListContentConfiguration plainHeaderConfiguration];
     config.text = title;
-    config.textProperties.font = [UIFont systemFontOfSize:15 weight:UIFontWeightBold];
+    config.textProperties.font = [UIFont systemFontOfSize:17 weight:UIFontWeightBold];
     config.textProperties.color = UIColor.labelColor;
+    config.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(14, 16, 6, 16);
     header.contentConfiguration = config;
     UIBackgroundConfiguration *background = [UIBackgroundConfiguration clearConfiguration];
     background.backgroundColor = UIColor.systemBackgroundColor;
@@ -667,28 +930,7 @@ static const CGFloat YMRowThumbWidth = 156;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-    if (section == YMDownloadsSectionQueue) return self.jobs.count ? 36 : 0;
-    return self.items.count && self.jobs.count ? 36 : 0;
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    if (section != YMDownloadsSectionLibrary || self.items.count == 0) return nil;
-    unsigned long long total = 0;
-    for (YMDownloadItem *item in self.items) total += item.fileSize;
-    NSString *summary = [NSString stringWithFormat:LOC(@"DOWNLOADS_STORAGE"), (unsigned long)self.items.count, YMDownloadsByteCount(total)];
-    NSDictionary *values = [[NSURL fileURLWithPath:NSHomeDirectory()] resourceValuesForKeys:@[NSURLVolumeAvailableCapacityForImportantUsageKey] error:nil];
-    NSNumber *free = values[NSURLVolumeAvailableCapacityForImportantUsageKey];
-    if (free) summary = [summary stringByAppendingFormat:@" · %@", [NSString stringWithFormat:LOC(@"DOWNLOADS_FREE_SPACE"), YMDownloadsByteCount(free.unsignedLongLongValue)]];
-    return summary;
-}
-
-- (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
-    if ([view isKindOfClass:UITableViewHeaderFooterView.class]) {
-        UITableViewHeaderFooterView *footer = (UITableViewHeaderFooterView *)view;
-        footer.textLabel.textAlignment = NSTextAlignmentCenter;
-        UIBackgroundConfiguration *background = [UIBackgroundConfiguration clearConfiguration];
-        footer.backgroundConfiguration = background;
-    }
+    return self.sections[section].title ? 44 : 0;
 }
 
 - (void)configureItemCell:(YMDownloadItemCell *)cell item:(YMDownloadItem *)item {
@@ -712,20 +954,20 @@ static const CGFloat YMRowThumbWidth = 156;
     cell.thumb.badge.text = YMLocalFormatTime(item.durationMs / 1000.0);
     NSTimeInterval resume = [[YMDownloadLibrary sharedLibrary] resumePositionForItem:item];
     cell.thumb.resumeFraction = item.durationMs > 0 ? resume / (item.durationMs / 1000.0) : 0;
-
     cell.moreButton.menu = [UIMenu menuWithTitle:@"" children:[self actionsForItem:item]];
     [cell setNeedsLayout];
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section == YMDownloadsSectionQueue) {
+    YMDownloadJob *job = [self jobAtIndexPath:indexPath];
+    if (job) {
         YMDownloadJobCell *cell = [tableView dequeueReusableCellWithIdentifier:@"job" forIndexPath:indexPath];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        [cell configureWithJob:self.jobs[indexPath.row]];
+        [cell configureWithJob:job];
         return cell;
     }
     YMDownloadItemCell *cell = [tableView dequeueReusableCellWithIdentifier:@"item" forIndexPath:indexPath];
-    [self configureItemCell:cell item:self.items[indexPath.row]];
+    [self configureItemCell:cell item:[self itemAtIndexPath:indexPath]];
     return cell;
 }
 
@@ -734,11 +976,11 @@ static const CGFloat YMRowThumbWidth = 156;
 }
 
 - (BOOL)tableView:(UITableView *)tableView shouldBeginMultipleSelectionInteractionAtIndexPath:(NSIndexPath *)indexPath {
-    return indexPath.section == YMDownloadsSectionLibrary;
+    return [self itemAtIndexPath:indexPath] != nil;
 }
 
 - (NSIndexPath *)tableView:(UITableView *)tableView willSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (tableView.isEditing && indexPath.section == YMDownloadsSectionQueue) return nil;
+    if (tableView.isEditing && ![self itemAtIndexPath:indexPath]) return nil;
     return indexPath;
 }
 
@@ -748,12 +990,14 @@ static const CGFloat YMRowThumbWidth = 156;
         return;
     }
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (indexPath.section == YMDownloadsSectionQueue) {
-        YMDownloadJob *job = self.jobs[indexPath.row];
+    YMDownloadJob *job = [self jobAtIndexPath:indexPath];
+    if (job) {
         if (job.state == YMDownloadJobStateFailed) [[YMDownloadQueue sharedQueue] retryJob:job];
         return;
     }
-    YMLocalPlayerOpen(self, self.items, indexPath.row);
+    YMDownloadItem *item = [self itemAtIndexPath:indexPath];
+    NSUInteger index = [self.items indexOfObject:item];
+    if (index != NSNotFound) YMLocalPlayerOpen(self, self.items, index);
 }
 
 - (void)tableView:(UITableView *)tableView didDeselectRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -793,6 +1037,14 @@ static const CGFloat YMRowThumbWidth = 156;
             YMDownloadSaveVideoToPhotos(item.fileURL, weakSelf);
         }]];
     }
+    if (item.author.length) {
+        [actions addObject:[UIAction actionWithTitle:LOC(@"MORE_FROM_CHANNEL") image:[UIImage systemImageNamed:@"person.crop.circle"] identifier:nil handler:^(UIAction *action) {
+            UISearchBar *bar = weakSelf.navigationItem.searchController.searchBar;
+            bar.text = item.author;
+            weakSelf.filter = item.author;
+            [weakSelf reloadData];
+        }]];
+    }
     if (item.videoID.length) {
         [actions addObject:[UIAction actionWithTitle:LOC(@"OPEN_VIDEO") image:[UIImage systemImageNamed:@"play.rectangle"] identifier:nil handler:^(UIAction *action) {
             [weakSelf openItemOnYouTube:item];
@@ -812,8 +1064,8 @@ static const CGFloat YMRowThumbWidth = 156;
 
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
     if (tableView.isEditing) return nil;
-    if (indexPath.section == YMDownloadsSectionQueue) {
-        YMDownloadJob *job = self.jobs[indexPath.row];
+    YMDownloadJob *job = [self jobAtIndexPath:indexPath];
+    if (job) {
         if (job.state == YMDownloadJobStateFailed) {
             UIContextualAction *remove = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:LOC(@"REMOVE") handler:^(UIContextualAction *action, UIView *view, void (^done)(BOOL)) {
                 [[YMDownloadQueue sharedQueue] removeJob:job];
@@ -833,7 +1085,8 @@ static const CGFloat YMRowThumbWidth = 156;
         return [UISwipeActionsConfiguration configurationWithActions:@[cancel]];
     }
 
-    YMDownloadItem *item = self.items[indexPath.row];
+    YMDownloadItem *item = [self itemAtIndexPath:indexPath];
+    if (!item) return nil;
     UIContextualAction *delete = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:nil handler:^(UIContextualAction *action, UIView *view, void (^done)(BOOL)) {
         [self confirmDeleteItem:item];
         done(NO);
@@ -849,8 +1102,8 @@ static const CGFloat YMRowThumbWidth = 156;
 }
 
 - (UIContextMenuConfiguration *)tableView:(UITableView *)tableView contextMenuConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath point:(CGPoint)point {
-    if (tableView.isEditing || indexPath.section != YMDownloadsSectionLibrary) return nil;
-    YMDownloadItem *item = self.items[indexPath.row];
+    YMDownloadItem *item = [self itemAtIndexPath:indexPath];
+    if (tableView.isEditing || !item) return nil;
     return [UIContextMenuConfiguration configurationWithIdentifier:nil previewProvider:nil actionProvider:^UIMenu *(NSArray<UIMenuElement *> *suggested) {
         return [UIMenu menuWithTitle:item.title ?: @"" children:[self actionsForItem:item]];
     }];
