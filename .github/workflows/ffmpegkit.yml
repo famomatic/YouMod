@@ -61,6 +61,7 @@ jobs:
           key: ffmpegkit-${{ inputs.tag || 'v9.0.0' }}-${{ hashFiles('tools/build-ffmpegkit.sh') }}-${{ github.run_id }}
           restore-keys: |
             ffmpegkit-${{ inputs.tag || 'v9.0.0' }}-${{ hashFiles('tools/build-ffmpegkit.sh') }}-
+            ffmpegkit-${{ inputs.tag || 'v9.0.0' }}-
 
       - name: Build FFmpegKit
         env:

@@ -46,11 +46,34 @@ if [[ ! -d "$SRC_DIR/.git" ]]; then
   git clone --quiet --depth=1 --branch "$TAG" "$REPO_URL" "$SRC_DIR"
 fi
 
+# Fixes for external library sources that no longer build with the Xcode 26
+# SDK. Sources are downloaded during the build, so patches are applied whenever
+# their file exists and the build is retried after a failure that unlocked one.
+apply_source_patches() {
+  local applied=1 file
+  # rubberband: mathmisc.h uses ::size_t without <cstddef>, which Xcode 26's
+  # libc++ no longer pulls in transitively.
+  file="$SRC_DIR/src/rubberband/src/common/mathmisc.h"
+  if [[ -f "$file" ]] && ! grep -q '<cstddef>' "$file"; then
+    perl -0pi -e 's/^/#include <cstddef>\n/' "$file"
+    info "patched rubberband mathmisc.h"
+    applied=0
+  fi
+  return $applied
+}
+
 info "building FFmpegKit $TAG (full GPL, ios-arm64)"
-(cd "$SRC_DIR" && ./nix-ios.sh -p xcode26 "${BUILD_ARGS[@]}") || {
+apply_source_patches || true
+attempt=1
+until (cd "$SRC_DIR" && ./nix-ios.sh -p xcode26 "${BUILD_ARGS[@]}"); do
+  if [[ $attempt -lt 3 ]] && apply_source_patches; then
+    attempt=$((attempt + 1))
+    info "retrying after source patch (attempt $attempt)"
+    continue
+  fi
   tail -n 200 "$SRC_DIR/build.log" >&2 || true
   die "ffmpeg-kit-next ios build failed"
-}
+done
 
 XCF_DIR="$(find "$SRC_DIR/prebuilt" -maxdepth 1 -type d -name 'bundle-apple-xcframework-ios*' | sort | head -n 1)"
 [[ -n "$XCF_DIR" ]] || die "no xcframework bundle under $SRC_DIR/prebuilt"
