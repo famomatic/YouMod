@@ -632,7 +632,7 @@ static BOOL isRelatedVideosExpanded = NO;
     }
 
     if (specs.count == 0) {
-        YMLayoutSpeedStepper(self, self.isOverlayVisible && !isRelatedVideosExpanded && !YouModRadioModeActive());
+        YMLayoutSpeedStepper(self, self.isOverlayVisible && !isRelatedVideosExpanded);
         return;
     }
 
@@ -685,7 +685,7 @@ static BOOL isRelatedVideosExpanded = NO;
         }
         if (!btn) btn = YMCreateOverlayButton(self, spec);
 
-        btn.hidden = !overlayVisible || isRelatedVideosExpanded || YouModRadioModeActive();
+        btn.hidden = !overlayVisible || isRelatedVideosExpanded;
 
         if (spec.tintProvider) {
             UIColor *dynamic = spec.tintProvider(player);
@@ -702,16 +702,16 @@ static BOOL isRelatedVideosExpanded = NO;
         [self bringSubviewToFront:btn];
     }
 
-    YMLayoutSpeedStepper(self, overlayVisible && !isRelatedVideosExpanded && !YouModRadioModeActive());
+    YMLayoutSpeedStepper(self, overlayVisible && !isRelatedVideosExpanded);
 }
 
 - (void)setOverlayVisible:(BOOL)visible {
     %orig;
     for (YMOverlayButtonSpec *spec in YMRegisteredOverlayButtons()) {
         YTQTMButton *btn = (YTQTMButton *)[self viewWithTag:spec.viewTag];
-        if (btn) btn.hidden = !visible || isRelatedVideosExpanded || YouModRadioModeActive();
+        if (btn) btn.hidden = !visible || isRelatedVideosExpanded;
     }
-    YMLayoutSpeedStepper(self, visible && !isRelatedVideosExpanded && !YouModRadioModeActive());
+    YMLayoutSpeedStepper(self, visible && !isRelatedVideosExpanded);
 }
 
 %new

@@ -1,19 +1,13 @@
 #import "Headers.h"
 #import <AVKit/AVKit.h>
-#import <MediaPlayer/MPVolumeView.h>
+#import <objc/runtime.h>
+#import <objc/message.h>
 
 // Radio Mode: audio-only playback, like YouTube Music's now-playing screen. Entered
-// via a button placed under the like/dislike/share/download row (the real "Listen
-// on YouTube Music" button's spot for official music videos). Hides the video behind
-// an opaque cover with title/author and repeat/shuffle/volume controls, and keeps
-// Picture in Picture from popping up while active.
-//
-// Nothing here is reimplemented from scratch: repeat reuses the existing KeepLoopKey
-// toggle (YouModLoopButton, already wired up in OverlayButtons.x), and shuffle forwards
-// a tap to YouTube's own real shuffle button in the playlist/up-next panel
-// (id.playlist_panel.shuffle.button) rather than reimplementing YTQueueShuffleController,
-// which is undocumented (no header exists for it anywhere) and too large a reverse-
-// engineering job for what this needs.
+// via a button placed under the like/dislike/share/download row or the radio overlay
+// button. Covers the video with its artwork (YouTube's controls and YouMod's overlay
+// buttons - loop included - stay usable on top) and keeps Picture in Picture from
+// popping up while active.
 
 extern YTPlayerViewController *YouModDownloadGetCurrentPlayer(void);
 extern NSString *YouModTitleForPlayer(YTPlayerViewController *player);
@@ -25,8 +19,6 @@ extern NSString *YouModAuthorForPlayer(YTPlayerViewController *player);
 
 static BOOL gYMRadioModeActive = NO;
 
-// So OverlayButtons.x can hide its own overlay buttons/stepper while Radio Mode
-// covers the video - they'd otherwise float uselessly on top of the cover.
 BOOL YouModRadioModeActive(void) {
     return gYMRadioModeActive;
 }
@@ -35,21 +27,6 @@ static NSInteger const YMRadioEntryButtonTag = 9920;
 static NSInteger const YMRadioCoverTag = 9921;
 static NSInteger const YMRadioTitleTag = 9923;
 static NSInteger const YMRadioAuthorTag = 9924;
-static NSInteger const YMRadioShuffleTag = 9925;
-static NSInteger const YMRadioRepeatTag = 9926;
-static NSInteger const YMRadioVolumeTag = 9927;
-static NSInteger const YMRadioExitTag = 9928;
-
-#pragma mark - Finding real native views by accessibility identifier
-
-static UIView *YMFindDescendantWithIdentifier(UIView *root, NSString *identifier) {
-    for (UIView *sub in root.subviews) {
-        if ([sub.accessibilityIdentifier isEqualToString:identifier]) return sub;
-        UIView *found = YMFindDescendantWithIdentifier(sub, identifier);
-        if (found) return found;
-    }
-    return nil;
-}
 
 static UIWindow *YMKeyWindowForSearch(void) {
     for (UIWindow *window in [UIApplication sharedApplication].windows) {
@@ -58,11 +35,12 @@ static UIWindow *YMKeyWindowForSearch(void) {
     return [UIApplication sharedApplication].windows.firstObject;
 }
 
-static UIControl *YMNativeShuffleButton(void) {
-    return (UIControl *)YMFindDescendantWithIdentifier(YMKeyWindowForSearch(), @"id.playlist_panel.shuffle.button");
-}
 
 #pragma mark - Toggling Radio Mode
+
+extern NSURL *YouModThumbnailURLForPlayer(YTPlayerViewController *player);
+static void YMLayoutRadioCover(YTPlayerView *playerView);
+static void YMRadioApplyPiPPolicy(void);
 
 static void YMToggleRadioMode(void) {
     gYMRadioModeActive = !gYMRadioModeActive;
@@ -71,6 +49,9 @@ static void YMToggleRadioMode(void) {
     YTMainAppVideoPlayerOverlayView *ovview = [ovcon videoPlayerOverlayView];
     YTMainAppControlsOverlayView *conview = [ovview controlsOverlayView];
     [conview setNeedsLayout];
+    YTPlayerView *playerView = (YTPlayerView *)player.playerView;
+    if ([playerView isKindOfClass:%c(YTPlayerView)]) YMLayoutRadioCover(playerView);
+    YMRadioApplyPiPPolicy();
     // Keep the action-bar entry button's title in sync where that button exists.
     UIButton *entry = (UIButton *)[YMKeyWindowForSearch() viewWithTag:YMRadioEntryButtonTag];
     [entry setTitle:LOC(gYMRadioModeActive ? @"RADIO_MODE_EXIT" : @"RADIO_MODE_ENTER") forState:UIControlStateNormal];
@@ -142,142 +123,202 @@ static void YMLayoutRadioEntryButton(UIView *actionBar) {
 }
 %end
 
-#pragma mark - The cover: hides the video, shows title/author + repeat/shuffle/volume
+#pragma mark - The cover: artwork over the video, YouTube's controls stay on top
 
-static void YMUpdateRadioRepeatIcon(UIButton *button) {
-    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIImageSymbolWeightMedium];
-    NSString *symbol = IS_ENABLED(KeepLoopKey) ? @"repeat.1" : @"repeat";
-    [button setImage:[[UIImage systemImageNamed:symbol withConfiguration:config] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate] forState:UIControlStateNormal];
-    button.tintColor = IS_ENABLED(KeepLoopKey) ? [UIColor systemRedColor] : [UIColor whiteColor];
+// The cover lives in YTPlayerView's rendering view container - above the video,
+// below the player overlay - so YouTube's own controls (play/pause, seek bar, time,
+// fullscreen) and YouMod's overlay buttons keep working over it, it stays up when
+// the controls auto-hide, and it follows the video into the mini player. (It used to
+// sit inside the controls overlay: it vanished with the controls, covered the seek
+// bar, and its volume slider sat where the scrubber is.)
+static NSCache<NSString *, UIImage *> *YMRadioArtworkCache(void) {
+    static NSCache *cache;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ cache = [NSCache new]; cache.countLimit = 20; });
+    return cache;
 }
 
-static void YMLayoutRadioCover(YTMainAppControlsOverlayView *overlay) {
-    UIView *cover = [overlay viewWithTag:YMRadioCoverTag];
-    if (!gYMRadioModeActive || !IS_ENABLED(RadioMode)) {
-        cover.hidden = YES;
+static UIView *YMRadioRenderingContainer(YTPlayerView *playerView) {
+    Ivar ivar = class_getInstanceVariable(object_getClass(playerView), "_renderingViewContainer");
+    UIView *container = ivar ? object_getIvar(playerView, ivar) : nil;
+    return [container isKindOfClass:UIView.class] ? container : nil;
+}
+
+static void YMRadioLoadArtwork(UIView *cover, YTPlayerViewController *player) {
+    NSString *videoID = player.currentVideoID;
+    UIImageView *art = [cover viewWithTag:YMRadioTitleTag + 100];
+    UIImageView *backdrop = [cover viewWithTag:YMRadioTitleTag + 101];
+    if (!videoID.length || [art.accessibilityIdentifier isEqualToString:videoID]) return;
+    art.accessibilityIdentifier = videoID;
+    UIImage *cached = [YMRadioArtworkCache() objectForKey:videoID];
+    art.image = cached;
+    backdrop.image = cached;
+    if (cached) return;
+    NSURL *url = YouModThumbnailURLForPlayer(player);
+    if (!url) return;
+    [[NSURLSession.sharedSession dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        UIImage *image = data.length ? [UIImage imageWithData:data] : nil;
+        if (!image) return;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [YMRadioArtworkCache() setObject:image forKey:videoID];
+            if (![art.accessibilityIdentifier isEqualToString:videoID]) return;
+            art.image = image;
+            backdrop.image = image;
+        });
+    }] resume];
+}
+
+static UIView *YMRadioCreateCover(void) {
+    UIView *cover = [UIView new];
+    cover.tag = YMRadioCoverTag;
+    cover.backgroundColor = UIColor.blackColor;
+    cover.clipsToBounds = YES;
+    cover.userInteractionEnabled = NO; // taps go to YouTube's player as usual
+    cover.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+
+    UIImageView *backdrop = [UIImageView new];
+    backdrop.tag = YMRadioTitleTag + 101;
+    backdrop.contentMode = UIViewContentModeScaleAspectFill;
+    backdrop.alpha = 0.55;
+    [cover addSubview:backdrop];
+    UIVisualEffectView *blur = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThickMaterialDark]];
+    blur.tag = YMRadioTitleTag + 102;
+    [cover addSubview:blur];
+
+    UIImageView *art = [UIImageView new];
+    art.tag = YMRadioTitleTag + 100;
+    art.contentMode = UIViewContentModeScaleAspectFill;
+    art.clipsToBounds = YES;
+    art.layer.cornerRadius = 10;
+    art.backgroundColor = [UIColor colorWithWhite:1 alpha:0.08];
+    [cover addSubview:art];
+
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:13 weight:UIImageSymbolWeightBold];
+    UIImageView *badge = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"headphones" withConfiguration:config]];
+    badge.tag = YMRadioTitleTag + 103;
+    badge.tintColor = UIColor.whiteColor;
+    badge.contentMode = UIViewContentModeCenter;
+    badge.backgroundColor = [UIColor colorWithWhite:0 alpha:0.6];
+    badge.layer.cornerRadius = 13;
+    badge.clipsToBounds = YES;
+    [cover addSubview:badge];
+
+    UILabel *title = [UILabel new];
+    title.tag = YMRadioTitleTag;
+    title.textColor = UIColor.whiteColor;
+    title.font = [UIFont systemFontOfSize:17 weight:UIFontWeightBold];
+    title.textAlignment = NSTextAlignmentCenter;
+    title.numberOfLines = 2;
+    [cover addSubview:title];
+    UILabel *author = [UILabel new];
+    author.tag = YMRadioAuthorTag;
+    author.textColor = [UIColor colorWithWhite:1 alpha:0.7];
+    author.font = [UIFont systemFontOfSize:14];
+    author.textAlignment = NSTextAlignmentCenter;
+    [cover addSubview:author];
+    return cover;
+}
+
+static void YMLayoutRadioCover(YTPlayerView *playerView) {
+    UIView *container = YMRadioRenderingContainer(playerView);
+    if (!container) return;
+    UIView *cover = [container viewWithTag:YMRadioCoverTag];
+    YTPlayerViewController *player = YouModDownloadGetCurrentPlayer();
+    BOOL active = gYMRadioModeActive && IS_ENABLED(RadioMode) && player && player.playerView == (id)playerView;
+    if (!active) {
+        [cover removeFromSuperview];
         return;
     }
+    if (!cover) cover = YMRadioCreateCover();
+    if (cover.superview != container || container.subviews.lastObject != cover) [container addSubview:cover];
+    cover.frame = container.bounds;
 
-    if (!cover) {
-        cover = [[UIView alloc] init];
-        cover.tag = YMRadioCoverTag;
-        cover.backgroundColor = [UIColor blackColor];
+    CGFloat width = cover.bounds.size.width, height = cover.bounds.size.height;
+    [cover viewWithTag:YMRadioTitleTag + 101].frame = cover.bounds;
+    [cover viewWithTag:YMRadioTitleTag + 102].frame = cover.bounds;
 
-        UIImageSymbolConfiguration *bgConfig = [UIImageSymbolConfiguration configurationWithPointSize:48 weight:UIImageSymbolWeightLight];
-        UIImageView *icon = [[UIImageView alloc] initWithImage:[[UIImage systemImageNamed:@"headphones" withConfiguration:bgConfig] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]];
-        icon.tintColor = [UIColor colorWithWhite:1.0 alpha:0.25];
-        icon.contentMode = UIViewContentModeCenter;
-        icon.translatesAutoresizingMaskIntoConstraints = YES;
-        icon.tag = 'icon';
-        [cover addSubview:icon];
-
-        YTLabel *title = [%c(YTLabel) new];
-        title.tag = YMRadioTitleTag;
-        title.textColor = [UIColor whiteColor];
-        title.font = [UIFont systemFontOfSize:16 weight:UIFontWeightBold];
-        title.textAlignment = NSTextAlignmentCenter;
-        title.numberOfLines = 2;
-        [cover addSubview:title];
-
-        YTLabel *author = [%c(YTLabel) new];
-        author.tag = YMRadioAuthorTag;
-        author.textColor = [UIColor colorWithWhite:1.0 alpha:0.7];
-        author.font = [UIFont systemFontOfSize:13 weight:UIFontWeightRegular];
-        author.textAlignment = NSTextAlignmentCenter;
-        [cover addSubview:author];
-
-        UIImageSymbolConfiguration *btnConfig = [UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIImageSymbolWeightMedium];
-
-        UIButton *shuffle = [UIButton buttonWithType:UIButtonTypeSystem];
-        shuffle.tag = YMRadioShuffleTag;
-        [shuffle setImage:[[UIImage systemImageNamed:@"shuffle" withConfiguration:btnConfig] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate] forState:UIControlStateNormal];
-        shuffle.tintColor = [UIColor whiteColor];
-        [shuffle addAction:[UIAction actionWithHandler:^(UIAction *action) {
-            // Forwards to the real native shuffle button rather than reimplementing it.
-            [YMNativeShuffleButton() sendActionsForControlEvents:UIControlEventTouchUpInside];
-        }] forControlEvents:UIControlEventTouchUpInside];
-        [cover addSubview:shuffle];
-
-        UIButton *repeatBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        repeatBtn.tag = YMRadioRepeatTag;
-        [cover addSubview:repeatBtn];
-        [repeatBtn addAction:[UIAction actionWithHandler:^(UIAction *action) {
-            [YouModDownloadGetCurrentPlayer() YouModLoopButton];
-            YMUpdateRadioRepeatIcon(repeatBtn);
-        }] forControlEvents:UIControlEventTouchUpInside];
-
-        MPVolumeView *volume = [[MPVolumeView alloc] init];
-        volume.tag = YMRadioVolumeTag;
-        [cover addSubview:volume];
-
-        // The overlay buttons are hidden under the cover, so it carries its own way back.
-        UIButton *exitBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        exitBtn.tag = YMRadioExitTag;
-        [exitBtn setImage:[[UIImage systemImageNamed:@"play.rectangle" withConfiguration:btnConfig] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate] forState:UIControlStateNormal];
-        exitBtn.tintColor = [UIColor whiteColor];
-        exitBtn.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.15];
-        exitBtn.layer.cornerRadius = 18;
-        exitBtn.accessibilityLabel = LOC(@"RADIO_MODE_EXIT");
-        [exitBtn addAction:[UIAction actionWithHandler:^(UIAction *action) {
-            YMToggleRadioMode();
-        }] forControlEvents:UIControlEventTouchUpInside];
-        [cover addSubview:exitBtn];
-
-        [overlay insertSubview:cover atIndex:0];
+    // Titles only where there is room (full screen); inline the page shows them.
+    BOOL roomy = height >= 300;
+    UILabel *title = [cover viewWithTag:YMRadioTitleTag];
+    UILabel *author = [cover viewWithTag:YMRadioAuthorTag];
+    title.hidden = author.hidden = !roomy;
+    CGFloat textHeight = roomy ? 70 : 0;
+    CGFloat artHeight = MAX(MIN((height - textHeight) * 0.6, width * 0.6 * 9 / 16), 24);
+    CGFloat artWidth = artHeight * 16 / 9;
+    CGFloat artY = (height - artHeight - textHeight) / 2;
+    UIView *art = [cover viewWithTag:YMRadioTitleTag + 100];
+    art.frame = CGRectMake((width - artWidth) / 2, artY, artWidth, artHeight);
+    [cover viewWithTag:YMRadioTitleTag + 103].frame = CGRectMake(CGRectGetMaxX(art.frame) - 32, CGRectGetMaxY(art.frame) - 32, 26, 26);
+    if (roomy) {
+        title.text = YouModTitleForPlayer(player) ?: @"";
+        author.text = YouModAuthorForPlayer(player) ?: @"";
+        title.frame = CGRectMake(24, CGRectGetMaxY(art.frame) + 14, width - 48, 44);
+        author.frame = CGRectMake(24, CGRectGetMaxY(title.frame) + 2, width - 48, 18);
     }
-
-    cover.hidden = NO;
-    cover.frame = overlay.bounds;
-    CGFloat width = cover.bounds.size.width;
-    CGFloat height = cover.bounds.size.height;
-
-    UIImageView *icon = [cover viewWithTag:'icon'];
-    icon.frame = cover.bounds;
-
-    YTPlayerViewController *player = YouModDownloadGetCurrentPlayer();
-    YTLabel *title = (YTLabel *)[cover viewWithTag:YMRadioTitleTag];
-    title.text = YouModTitleForPlayer(player) ?: @"";
-    YTLabel *author = (YTLabel *)[cover viewWithTag:YMRadioAuthorTag];
-    author.text = YouModAuthorForPlayer(player) ?: @"";
-    title.frame = CGRectMake(20, height / 2.0 - 30, width - 40, 40);
-    author.frame = CGRectMake(20, CGRectGetMaxY(title.frame) + 4, width - 40, 18);
-
-    UIButton *shuffle = (UIButton *)[cover viewWithTag:YMRadioShuffleTag];
-    UIButton *repeatBtn = (UIButton *)[cover viewWithTag:YMRadioRepeatTag];
-    MPVolumeView *volume = (MPVolumeView *)[cover viewWithTag:YMRadioVolumeTag];
-    YMUpdateRadioRepeatIcon(repeatBtn);
-
-    // Shuffle only makes sense (and only has a real native button to forward to)
-    // when this video is playing as part of a playlist/queue.
-    BOOL hasPlaylist = (YMNativeShuffleButton() != nil);
-    shuffle.hidden = !hasPlaylist;
-
-    CGFloat controlsY = height - 70;
-    CGFloat centerX = width / 2.0;
-    repeatBtn.frame = CGRectMake(centerX - 18, controlsY, 36, 36);
-    if (hasPlaylist) {
-        shuffle.frame = CGRectMake(centerX - 90, controlsY, 36, 36);
-    }
-    volume.frame = CGRectMake(20, height - 28, width - 40, 20);
-    UIButton *exitBtn = (UIButton *)[cover viewWithTag:YMRadioExitTag];
-    exitBtn.frame = CGRectMake(width - 52, 12, 36, 36);
+    YMRadioLoadArtwork(cover, player);
 }
 
-%hook YTMainAppControlsOverlayView
+// The next video in a queue keeps Radio Mode on; refresh the cover's artwork.
+%hook YTPlayerViewController
+- (void)singleVideo:(id)video currentVideoTimeDidChange:(id)time {
+    %orig;
+    if (!gYMRadioModeActive) return;
+    UIView *cover = [YMRadioRenderingContainer((YTPlayerView *)self.playerView) viewWithTag:YMRadioCoverTag];
+    UIView *art = [cover viewWithTag:YMRadioTitleTag + 100];
+    if (cover && ![art.accessibilityIdentifier isEqualToString:self.currentVideoID]) [(UIView *)self.playerView setNeedsLayout];
+}
+%end
+
+%hook YTPlayerView
 - (void)layoutSubviews {
     %orig;
-    YMLayoutRadioCover(self);
+    if (gYMRadioModeActive || [YMRadioRenderingContainer(self) viewWithTag:YMRadioCoverTag]) YMLayoutRadioCover(self);
 }
 %end
 
 #pragma mark - Keeping Picture in Picture from popping up while Radio Mode is active
 
+// YouTube sets canStartPictureInPictureAutomaticallyFromInline on its controller
+// (AVKit reads the stored value, so overriding the getter did nothing) and may also
+// start PiP itself when the app goes to the background. While Radio Mode is on both
+// are turned off; leaving it restores what YouTube asked for. YouMod's own
+// Downloads player is left alone.
+static NSHashTable<AVPictureInPictureController *> *YMRadioPiPControllers(void) {
+    static NSHashTable *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static const void *YMRadioPiPWantedKey = &YMRadioPiPWantedKey;
+
+static BOOL YMRadioIsYouTubePiP(AVPictureInPictureController *controller) {
+    id delegate = controller.delegate;
+    return !(delegate && [NSStringFromClass([delegate class]) hasPrefix:@"YMLocal"]);
+}
+
 %hook AVPictureInPictureController
-- (BOOL)canStartPictureInPictureAutomaticallyFromInline {
-    if (gYMRadioModeActive) return NO;
-    return %orig;
+- (void)setCanStartPictureInPictureAutomaticallyFromInline:(BOOL)enabled {
+    if (!YMRadioIsYouTubePiP(self)) { %orig; return; }
+    [YMRadioPiPControllers() addObject:self];
+    objc_setAssociatedObject(self, YMRadioPiPWantedKey, @(enabled), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    %orig(gYMRadioModeActive ? NO : enabled);
+}
+- (void)startPictureInPicture {
+    if (gYMRadioModeActive && YMRadioIsYouTubePiP(self)) return;
+    %orig;
 }
 %end
+
+// Re-sends what YouTube asked for; the setter hook above turns it into NO while
+// Radio Mode is on.
+static void YMRadioApplyPiPPolicy(void) {
+    for (AVPictureInPictureController *controller in YMRadioPiPControllers().allObjects) {
+        NSNumber *wanted = objc_getAssociatedObject(controller, YMRadioPiPWantedKey);
+        if (@available(iOS 14.2, *)) controller.canStartPictureInPictureAutomaticallyFromInline = wanted.boolValue;
+        if (gYMRadioModeActive && controller.isPictureInPictureActive) [controller stopPictureInPicture];
+    }
+}
 
 #pragma mark - Player overlay button (the reliable way in)
 
@@ -297,8 +338,12 @@ static void YMLayoutRadioCover(YTMainAppControlsOverlayView *overlay) {
     radio.isVisible = ^BOOL(YTPlayerViewController *player) {
         return IS_ENABLED(RadioMode) && YMIsOverlayButtonEnabled(@"radio.video");
     };
+    radio.tintProvider = ^UIColor *(YTPlayerViewController *player) {
+        return gYMRadioModeActive ? UIColor.systemRedColor : UIColor.whiteColor;
+    };
     radio.onTap = ^(YTPlayerViewController *player, YTQTMButton *button) {
         YMToggleRadioMode();
+        button.tintColor = gYMRadioModeActive ? UIColor.systemRedColor : UIColor.whiteColor;
     };
     YMRegisterOverlayButton(radio);
 }

@@ -858,6 +858,11 @@ static NSURL *YouModThumbnailURL(YTPlayerViewController *player) {
 // The authorization handler runs on an arbitrary queue; every caller shows UI
 // (toasts, share sheet) from its completion, so it is always delivered on main.
 // Presenting from the background queue is what crashed when access was denied.
+// For Radio.x's cover art.
+NSURL *YouModThumbnailURLForPlayer(YTPlayerViewController *player) {
+    return YouModThumbnailURL(player);
+}
+
 static void YouModRequestPhotoAccess(void (^completion)(BOOL granted)) {
     void (^deliver)(PHAuthorizationStatus) = ^(PHAuthorizationStatus status) {
         BOOL granted = status == PHAuthorizationStatusAuthorized || status == PHAuthorizationStatusLimited;
