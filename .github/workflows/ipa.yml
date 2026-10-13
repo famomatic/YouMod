@@ -291,6 +291,9 @@ jobs:
           FFMPEGKIT_RELEASE_REPO: ${{ github.repository }}
         run: bash YouMod/tools/fetch-ffmpegkit.sh
 
+      - name: Fetch MobileVLCKit
+        run: bash YouMod/tools/fetch-vlckit.sh
+
       # FFmpegKit is kept out of the deb here: cyan turns every .framework it finds
       # in a deb into a load command on YouTube's executable, which would load all
       # of FFmpeg at every launch. It is added after injection instead.
@@ -412,18 +415,21 @@ jobs:
 
       # Copied in without load commands - YouMod dlopens FFmpegKit only when a
       # download needs it. In the app's Frameworks folder every signer re-signs it.
-      - name: Add FFmpegKit frameworks
+      - name: Add FFmpegKit and MobileVLCKit frameworks
         run: |
-          if [ ! -f YouMod/modules/ffmpeg/ffmpegkit.framework/ffmpegkit ]; then
-            echo "::warning::No FFmpegKit frameworks - IPA built without bundled FFmpeg (run the 'Build FFmpegKit (full GPL)' workflow)"
-            exit 0
-          fi
+          has_ffmpeg=0; has_vlc=0
+          [ -f YouMod/modules/ffmpeg/ffmpegkit.framework/ffmpegkit ] && has_ffmpeg=1
+          [ -f YouMod/modules/vlc/MobileVLCKit.framework/MobileVLCKit ] && has_vlc=1
+          [ $has_ffmpeg = 1 ] || echo "::warning::No FFmpegKit frameworks - IPA built without bundled FFmpeg (run the 'Build FFmpegKit (full GPL)' workflow)"
+          [ $has_vlc = 1 ] || echo "::warning::No MobileVLCKit - the Downloads player has no VLC route"
+          if [ $has_ffmpeg = 0 ] && [ $has_vlc = 0 ]; then exit 0; fi
           ipa="YouMod_${{ env.YT_VERSION }}_v${{ env.YOUMOD_VERSION }}.ipa"
           rm -rf ipawork && mkdir ipawork && cd ipawork
           unzip -q "../$ipa"
           app="$(ls -d Payload/*.app | head -n 1)"
           mkdir -p "$app/Frameworks"
-          cp -R ../YouMod/modules/ffmpeg/*.framework "$app/Frameworks/"
+          [ $has_ffmpeg = 1 ] && cp -R ../YouMod/modules/ffmpeg/*.framework "$app/Frameworks/"
+          [ $has_vlc = 1 ] && cp -R ../YouMod/modules/vlc/MobileVLCKit.framework "$app/Frameworks/"
           rm "../$ipa"
           zip -qry "../$ipa" Payload -x '*/.*'
           cd .. && rm -rf ipawork

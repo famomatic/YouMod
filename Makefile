@@ -20,6 +20,9 @@ include $(THEOS_MAKE_PATH)/tweak.mk
 # The IPA workflow sets YOUMOD_BUNDLE_FFMPEG=0 and injects them into the app's
 # Frameworks folder instead, where every sideloading signer re-signs them.
 FFMPEGKIT_DIR ?= modules/ffmpeg
+# MobileVLCKit for the Downloads player's VLC route (tools/fetch-vlckit.sh); also
+# dlopen'd on demand, staged and injected exactly like FFmpegKit.
+VLCKIT_DIR ?= modules/vlc
 YOUMOD_BUNDLE_FFMPEG ?= 1
 
 after-stage::
@@ -32,5 +35,14 @@ ifeq ($(YOUMOD_BUNDLE_FFMPEG),1)
 		echo "==> Staged FFmpegKit into $${bundle#$(THEOS_STAGING_DIR)}/Frameworks"; \
 	else \
 		echo "==> No FFmpegKit in $(FFMPEGKIT_DIR) - building without bundled FFmpeg"; \
+	fi
+	@if [ -f "$(VLCKIT_DIR)/MobileVLCKit.framework/MobileVLCKit" ]; then \
+		bundle="$$(find "$(THEOS_STAGING_DIR)" -type d -name YouMod.bundle -print -quit)"; \
+		if [ -z "$$bundle" ]; then echo "error: YouMod.bundle not found in staging" >&2; exit 1; fi; \
+		mkdir -p "$$bundle/Frameworks"; \
+		cp -R "$(VLCKIT_DIR)/MobileVLCKit.framework" "$$bundle/Frameworks/"; \
+		echo "==> Staged MobileVLCKit into $${bundle#$(THEOS_STAGING_DIR)}/Frameworks"; \
+	else \
+		echo "==> No MobileVLCKit in $(VLCKIT_DIR) - building without the VLC playback route"; \
 	fi
 endif

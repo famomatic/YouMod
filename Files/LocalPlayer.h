@@ -21,7 +21,6 @@ typedef NS_ENUM(NSInteger, YMRepeatMode) {
 
 @interface YMLocalPlayback : NSObject
 + (instancetype)sharedPlayback;
-@property (nonatomic, readonly) AVPlayer *player;
 @property (nonatomic, readonly) YMDownloadItem *currentItem;
 @property (nonatomic, readonly) BOOL isPlaying;
 @property (nonatomic, readonly) NSTimeInterval currentTime;
@@ -39,9 +38,6 @@ typedef NS_ENUM(NSInteger, YMRepeatMode) {
 - (void)stop;
 - (void)seekToTime:(NSTimeInterval)time;
 - (void)seekBy:(NSTimeInterval)delta;
-// Layers showing the video are detached while the app is in the background so iOS
-// keeps the audio playing (unless Picture in Picture is running).
-- (void)registerPlayerLayer:(AVPlayerLayer *)layer;
 - (UIImage *)artworkForItem:(YMDownloadItem *)item;
 @end
 

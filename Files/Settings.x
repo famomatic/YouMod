@@ -1,6 +1,7 @@
 // Settings.x
 // Thanks to the original codes from YTUHD by PoomSmart - https://github.com/PoomSmart/YTUHD/blob/0e735616fd8fc6546339da7fdc78466f16f23ffd/Settings.x
 #import "Headers.h"
+#import "LocalPlayerEngine.h"
 #import "FFmpegKit.h"
 
 #define TweakName @"YouMod"
@@ -215,9 +216,11 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             [[YMToggle(YMLOC(@"FFMPEG_PHOTOS_COMPAT"), YMLOC(@"FFMPEG_PHOTOS_COMPAT_DESC"), FFmpegPhotosCompatible) visibleWhenAnyBoolKey:@[UseFFmpeg]] visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
             [YMAction(YMLOC(@"FFMPEG_STATUS"), YMLOC(@"FFMPEG_STATUS_DESC"), ^(UIViewController *vc) {
                 NSString *status = YMFFmpegAvailable() ? YMLOC(@"FFMPEG_READY") : YMLOC(@"FFMPEG_UNAVAILABLE");
-                UIAlertController *alert = [UIAlertController alertControllerWithTitle:status message:YMFFmpegDiagnostics() preferredStyle:UIAlertControllerStyleAlert];
+                [YMVLCEngine isAvailable];
+                NSString *details = [NSString stringWithFormat:@"%@\n\n%@", YMFFmpegDiagnostics(), YMVLCDiagnostics()];
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:status message:details preferredStyle:UIAlertControllerStyleAlert];
                 [alert addAction:[UIAlertAction actionWithTitle:YMLOC(@"COPY") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-                    UIPasteboard.generalPasteboard.string = YMFFmpegDiagnostics();
+                    UIPasteboard.generalPasteboard.string = details;
                 }]];
                 [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
                 [vc presentViewController:alert animated:YES completion:nil];

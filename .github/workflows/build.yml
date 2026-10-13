@@ -95,6 +95,9 @@ jobs:
           FFMPEGKIT_RELEASE_REPO: ${{ github.repository }}
         run: bash YouMod/tools/fetch-ffmpegkit.sh
 
+      - name: Fetch MobileVLCKit
+        run: bash YouMod/tools/fetch-vlckit.sh
+
       - name: Build YouMod
         run: |
           cd YouMod

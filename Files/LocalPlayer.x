@@ -6,6 +6,7 @@
 #import "DownloadLibrary.h"
 #import "DownloadQueue.h"
 #import "LocalPlayer.h"
+#import "LocalPlayerEngine.h"
 #import "FFmpegKit.h"
 #import <AVKit/AVKit.h>
 #import <MediaPlayer/MediaPlayer.h>
@@ -91,22 +92,35 @@ static NSString *YMLocalUnsupportedFormat(NSURL *url) {
     return result.length ? result : nil;
 }
 
-#pragma mark - Playback engine
+#pragma mark - Playback
 
 @interface YMLocalPlayback ()
-@property (nonatomic, strong, readwrite) AVPlayer *player;
 @property (nonatomic, strong, readwrite) YMDownloadItem *currentItem;
 @property (nonatomic, copy) NSArray<YMDownloadItem *> *queue;
 @property (nonatomic, strong) NSMutableArray<NSNumber *> *order; // play order (indices into queue)
 @property (nonatomic, assign) NSUInteger position;               // index into order
-@property (nonatomic, strong) id timeObserver;
+@property (nonatomic, strong) YMNativeEngine *nativeEngine;
+@property (nonatomic, strong) YMVLCEngine *vlcEngine;
+@property (nonatomic, strong) id<YMPlaybackEngine> engine;
+@property (nonatomic, strong) NSTimer *ticker;
 @property (nonatomic, strong) NSMutableArray *commandTargets;
-@property (nonatomic, strong) NSHashTable<AVPlayerLayer *> *layers;
+@property (nonatomic, strong) NSHashTable<YMLocalVideoView *> *videoViews;
 @property (nonatomic, strong) NSCache<NSString *, UIImage *> *artwork;
 @property (nonatomic, assign) BOOL inBackground;
 @property (nonatomic, assign) NSTimeInterval lastSavedPosition;
 @property (nonatomic, weak) AVPictureInPictureController *pictureInPicture;
+@property (nonatomic, readonly) YMPlaybackRoute route;
+- (void)registerVideoView:(YMLocalVideoView *)view;
 @end
+
+// The engine that can play a file: AVPlayer when AVFoundation decodes it, VLC for
+// everything else (when MobileVLCKit is installed).
+static YMPlaybackRoute YMLocalRouteForURL(NSURL *url, BOOL *playable) {
+    if (!YMLocalUnsupportedFormat(url)) { if (playable) *playable = YES; return YMPlaybackRouteNative; }
+    BOOL vlc = [YMVLCEngine isAvailable];
+    if (playable) *playable = vlc;
+    return YMPlaybackRouteVLC;
+}
 
 @implementation YMLocalPlayback
 
@@ -119,23 +133,11 @@ static NSString *YMLocalUnsupportedFormat(NSURL *url) {
 
 - (instancetype)init {
     if ((self = [super init])) {
-        _player = [AVPlayer new];
-        _player.allowsExternalPlayback = YES;
-        _player.automaticallyWaitsToMinimizeStalling = NO;
         _rate = 1.0f;
-        _layers = [NSHashTable weakObjectsHashTable];
+        _videoViews = [NSHashTable weakObjectsHashTable];
         _artwork = [NSCache new];
         _commandTargets = [NSMutableArray array];
-        [_player addObserver:self forKeyPath:@"timeControlStatus" options:0 context:NULL];
-
-        __weak typeof(self) weakSelf = self;
-        _timeObserver = [_player addPeriodicTimeObserverForInterval:CMTimeMakeWithSeconds(1, 600) queue:dispatch_get_main_queue() usingBlock:^(CMTime time) {
-            [weakSelf periodicTick];
-        }];
-
         NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
-        [center addObserver:self selector:@selector(itemDidPlayToEnd:) name:AVPlayerItemDidPlayToEndTimeNotification object:nil];
-        [center addObserver:self selector:@selector(itemFailed:) name:AVPlayerItemFailedToPlayToEndTimeNotification object:nil];
         [center addObserver:self selector:@selector(appDidEnterBackground) name:UIApplicationDidEnterBackgroundNotification object:nil];
         [center addObserver:self selector:@selector(appWillEnterForeground) name:UIApplicationWillEnterForegroundNotification object:nil];
         [center addObserver:self selector:@selector(libraryChanged) name:YMDownloadLibraryDidChangeNotification object:nil];
@@ -143,30 +145,54 @@ static NSString *YMLocalUnsupportedFormat(NSURL *url) {
     return self;
 }
 
-- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self updateNowPlaying];
-        [self postState];
-    });
+- (id<YMPlaybackEngine>)engineForRoute:(YMPlaybackRoute)route {
+    if (route == YMPlaybackRouteVLC) {
+        if (!self.vlcEngine) self.vlcEngine = [YMVLCEngine new];
+        return self.vlcEngine;
+    }
+    if (!self.nativeEngine) self.nativeEngine = [YMNativeEngine new];
+    return self.nativeEngine;
+}
+
+- (void)switchToEngine:(id<YMPlaybackEngine>)engine {
+    if (engine == self.engine) return;
+    [self.engine stop];
+    self.engine.stateHandler = nil;
+    self.engine.endHandler = nil;
+    self.engine.failureHandler = nil;
+    self.engine = engine;
+    __weak typeof(self) weakSelf = self;
+    engine.stateHandler = ^{ [weakSelf engineStateChanged]; };
+    engine.endHandler = ^{ [weakSelf engineReachedEnd]; };
+    engine.failureHandler = ^{ [weakSelf engineFailed]; };
+    [engine setRate:self.rate];
+    for (YMLocalVideoView *view in self.videoViews) [engine attachVideoView:view];
+}
+
+- (YMPlaybackRoute)route {
+    return self.engine ? self.engine.route : YMPlaybackRouteNative;
 }
 
 - (void)postState {
     [NSNotificationCenter.defaultCenter postNotificationName:YMLocalPlaybackStateDidChangeNotification object:self];
 }
 
+- (void)engineStateChanged {
+    [self updateNowPlaying];
+    [self postState];
+}
+
 - (BOOL)isPlaying {
-    return self.player.timeControlStatus != AVPlayerTimeControlStatusPaused;
+    return self.currentItem && self.engine.isPlaying;
 }
 
 - (NSTimeInterval)currentTime {
-    NSTimeInterval time = CMTimeGetSeconds(self.player.currentTime);
-    return isfinite(time) ? time : 0;
+    return self.currentItem ? self.engine.currentTime : 0;
 }
 
 - (NSTimeInterval)duration {
-    NSTimeInterval duration = CMTimeGetSeconds(self.player.currentItem.duration);
-    if (isfinite(duration) && duration > 0) return duration;
-    return self.currentItem.durationMs / 1000.0;
+    NSTimeInterval duration = self.currentItem ? self.engine.duration : 0;
+    return duration > 0 ? duration : self.currentItem.durationMs / 1000.0;
 }
 
 - (BOOL)hasNext {
@@ -219,36 +245,42 @@ static NSString *YMLocalUnsupportedFormat(NSURL *url) {
 
 - (void)setRate:(float)rate {
     _rate = rate;
-    if (self.isPlaying) self.player.rate = rate;
+    [self.engine setRate:rate];
     [self updateNowPlaying];
     [self postState];
 }
 
 - (void)loadCurrentAndPlay:(BOOL)play {
-    // Skip files that can't play (a conversion was declined, or the file is gone).
+    // Skip files no engine can play (or that are gone).
     NSUInteger attempts = 0;
     YMDownloadItem *item = nil;
+    YMPlaybackRoute route = YMPlaybackRouteNative;
     while (attempts++ < self.order.count) {
         YMDownloadItem *candidate = self.queue[self.order[self.position].unsignedIntegerValue];
-        if ([NSFileManager.defaultManager fileExistsAtPath:candidate.fileURL.path] && !YMLocalUnsupportedFormat(candidate.fileURL)) {
-            item = candidate;
-            break;
-        }
+        BOOL playable = NO;
+        if ([NSFileManager.defaultManager fileExistsAtPath:candidate.fileURL.path]) route = YMLocalRouteForURL(candidate.fileURL, &playable);
+        if (playable) { item = candidate; break; }
         if (self.position + 1 >= self.order.count) break;
         self.position++;
     }
     if (!item) { [self stop]; return; }
+    [self loadItem:item route:route play:play];
+}
 
+- (void)loadItem:(YMDownloadItem *)item route:(YMPlaybackRoute)route play:(BOOL)play {
     self.currentItem = item;
-    AVPlayerItem *playerItem = [AVPlayerItem playerItemWithURL:item.fileURL];
-    [self.player replaceCurrentItemWithPlayerItem:playerItem];
+    [self switchToEngine:[self engineForRoute:route]];
     NSTimeInterval resume = [[YMDownloadLibrary sharedLibrary] resumePositionForItem:item];
     NSTimeInterval duration = item.durationMs / 1000.0;
-    if (resume > 5 && (duration <= 0 || resume < duration - 5)) {
-        [self.player seekToTime:CMTimeMakeWithSeconds(resume, 600) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
-    }
+    if (resume <= 5 || (duration > 0 && resume >= duration - 5)) resume = 0;
     self.lastSavedPosition = resume;
+    [self.engine loadURL:item.fileURL startTime:resume];
+    if (self.inBackground) [self.engine setVideoSuspended:YES];
 
+    if (!self.ticker) {
+        __weak typeof(self) weakSelf = self;
+        self.ticker = [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer) { [weakSelf periodicTick]; }];
+    }
     [self installRemoteCommands];
     [self updateNowPlaying];
     [NSNotificationCenter.defaultCenter postNotificationName:YMLocalPlaybackItemDidChangeNotification object:self];
@@ -283,18 +315,19 @@ static NSString *YMLocalUnsupportedFormat(NSURL *url) {
 #pragma mark Transport
 
 - (void)play {
-    if (!self.player.currentItem) return;
+    if (!self.currentItem) return;
     YTPlayerViewController *youtube = YouModDownloadGetCurrentPlayer();
     if ([youtube respondsToSelector:@selector(pause)]) [youtube pause];
     [AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryPlayback mode:AVAudioSessionModeMoviePlayback options:0 error:nil];
     [AVAudioSession.sharedInstance setActive:YES error:nil];
-    if (self.duration > 0 && self.currentTime >= self.duration - 0.5) [self.player seekToTime:kCMTimeZero];
-    [self.player playImmediatelyAtRate:self.rate];
+    [self.engine play];
+    [self engineStateChanged];
 }
 
 - (void)pause {
-    [self.player pause];
+    [self.engine pause];
     [self saveResumePosition];
+    [self engineStateChanged];
 }
 
 - (void)togglePlayPause {
@@ -307,9 +340,7 @@ static NSString *YMLocalUnsupportedFormat(NSURL *url) {
     if (duration > 0) time = MIN(time, duration - 0.1);
     time = MAX(time, 0);
     __weak typeof(self) weakSelf = self;
-    [self.player seekToTime:CMTimeMakeWithSeconds(time, 600) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero completionHandler:^(BOOL finished) {
-        dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf updateNowPlaying]; [weakSelf postState]; });
-    }];
+    [self.engine seekToTime:time completion:^{ [weakSelf engineStateChanged]; }];
 }
 
 - (void)seekBy:(NSTimeInterval)delta {
@@ -318,8 +349,9 @@ static NSString *YMLocalUnsupportedFormat(NSURL *url) {
 
 - (void)stop {
     [self saveResumePosition];
-    [self.player pause];
-    [self.player replaceCurrentItemWithPlayerItem:nil];
+    [self.engine stop];
+    [self.ticker invalidate];
+    self.ticker = nil;
     self.currentItem = nil;
     self.queue = nil;
     self.order = nil;
@@ -330,13 +362,12 @@ static NSString *YMLocalUnsupportedFormat(NSURL *url) {
     [self postState];
 }
 
-- (void)itemDidPlayToEnd:(NSNotification *)note {
-    if (note.object != self.player.currentItem) return;
+- (void)engineReachedEnd {
     [[YMDownloadLibrary sharedLibrary] setResumePosition:0 forItem:self.currentItem];
     self.lastSavedPosition = 0;
     if (self.repeatMode == YMRepeatModeOne) {
-        [self.player seekToTime:kCMTimeZero];
-        [self.player playImmediatelyAtRate:self.rate];
+        [self.engine seekToTime:0 completion:nil];
+        [self.engine play];
     } else if (self.hasNext) {
         [self next];
     } else {
@@ -344,9 +375,15 @@ static NSString *YMLocalUnsupportedFormat(NSURL *url) {
     }
 }
 
-- (void)itemFailed:(NSNotification *)note {
-    if (note.object != self.player.currentItem) return;
+// AVFoundation sometimes accepts a file it then can't decode; VLC gets a go first.
+- (void)engineFailed {
+    YMDownloadItem *item = self.currentItem;
+    if (item && self.engine.route == YMPlaybackRouteNative && [YMVLCEngine isAvailable]) {
+        [self loadItem:item route:YMPlaybackRouteVLC play:YES];
+        return;
+    }
     YMDownloadShowToast(LOC(@"PLAYBACK_FAILED"), YES);
+    [self postState];
 }
 
 - (void)libraryChanged {
@@ -360,7 +397,7 @@ static NSString *YMLocalUnsupportedFormat(NSURL *url) {
 }
 
 - (void)saveResumePosition {
-    if (!self.currentItem || !self.player.currentItem) return;
+    if (!self.currentItem) return;
     NSTimeInterval time = self.currentTime;
     NSTimeInterval duration = self.duration;
     // Nearly finished counts as watched.
@@ -370,25 +407,25 @@ static NSString *YMLocalUnsupportedFormat(NSURL *url) {
     self.lastSavedPosition = time;
 }
 
-#pragma mark Background / PiP
+#pragma mark Video views / background
 
-- (void)registerPlayerLayer:(AVPlayerLayer *)layer {
-    [self.layers addObject:layer];
-    layer.player = self.inBackground ? nil : self.player;
+- (void)registerVideoView:(YMLocalVideoView *)view {
+    [self.videoViews addObject:view];
+    if (self.engine) [self.engine attachVideoView:view];
 }
 
 - (void)appDidEnterBackground {
     self.inBackground = YES;
     // With the video on screen, Picture in Picture starts automatically and needs
-    // the layer; it may not report active yet at this point.
+    // the video; it may not report active yet at this point.
     if (self.pictureInPicture.isPictureInPictureActive) return;
     if (ymPlayerPresented && self.pictureInPicture && self.currentItem.isVideo && self.isPlaying) return;
-    for (AVPlayerLayer *layer in self.layers) layer.player = nil;
+    [self.engine setVideoSuspended:YES];
 }
 
 - (void)appWillEnterForeground {
     self.inBackground = NO;
-    for (AVPlayerLayer *layer in self.layers) layer.player = self.player;
+    [self.engine setVideoSuspended:NO];
 }
 
 #pragma mark Now playing
@@ -479,23 +516,12 @@ static NSString *YMLocalUnsupportedFormat(NSURL *url) {
 }
 %end
 
-#pragma mark - Player layer view
-
-@interface YMPlayerLayerView : UIView
-@property (nonatomic, readonly) AVPlayerLayer *playerLayer;
-@end
-
-@implementation YMPlayerLayerView
-+ (Class)layerClass { return AVPlayerLayer.class; }
-- (AVPlayerLayer *)playerLayer { return (AVPlayerLayer *)self.layer; }
-@end
-
 #pragma mark - Full player
 
-@interface YMLocalPlayerViewController : UIViewController <AVPictureInPictureControllerDelegate, UIGestureRecognizerDelegate>
+@interface YMLocalPlayerViewController : UIViewController <AVPictureInPictureControllerDelegate, AVPictureInPictureSampleBufferPlaybackDelegate, UIGestureRecognizerDelegate>
 @property (nonatomic, strong) UIView *topBand;
 @property (nonatomic, strong) UIView *videoContainer;
-@property (nonatomic, strong) YMPlayerLayerView *videoView;
+@property (nonatomic, strong) YMLocalVideoView *videoView;
 @property (nonatomic, strong) UIImageView *artworkBackground;
 @property (nonatomic, strong) UIImageView *artworkView;
 @property (nonatomic, strong) UIView *controls;
@@ -519,7 +545,8 @@ static NSString *YMLocalUnsupportedFormat(NSURL *url) {
 @property (nonatomic, strong) UIScrollView *actionsScroll;
 @property (nonatomic, strong) UIStackView *actionsStack;
 @property (nonatomic, strong) AVPictureInPictureController *pictureInPicture;
-@property (nonatomic, strong) id timeObserver;
+@property (nonatomic, assign) NSInteger pictureInPictureRoute; // route the controller was built for, -1 none
+@property (nonatomic, strong) NSTimer *ticker;
 @property (nonatomic, strong) NSTimer *hideTimer;
 @property (nonatomic, assign) BOOL controlsVisible;
 @property (nonatomic, assign) BOOL scrubbing;
@@ -602,17 +629,11 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
     self.artworkView.contentMode = UIViewContentModeScaleAspectFit;
     [self.videoContainer addSubview:self.artworkView];
 
-    self.videoView = [YMPlayerLayerView new];
-    self.videoView.playerLayer.videoGravity = AVLayerVideoGravityResizeAspect;
-    [playback registerPlayerLayer:self.videoView.playerLayer];
+    self.videoView = [YMLocalVideoView new];
+    self.videoView.videoGravity = AVLayerVideoGravityResizeAspect;
+    [playback registerVideoView:self.videoView];
     [self.videoContainer addSubview:self.videoView];
-
-    if ([AVPictureInPictureController isPictureInPictureSupported]) {
-        self.pictureInPicture = [[AVPictureInPictureController alloc] initWithPlayerLayer:self.videoView.playerLayer];
-        self.pictureInPicture.delegate = self;
-        if (@available(iOS 14.2, *)) self.pictureInPicture.canStartPictureInPictureAutomaticallyFromInline = YES;
-        playback.pictureInPicture = self.pictureInPicture;
-    }
+    self.pictureInPictureRoute = -1;
 
     [self buildControls];
     [self buildInfo];
@@ -638,10 +659,6 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
     pan.delegate = self;
     [self.view addGestureRecognizer:pan];
 
-    __weak typeof(self) weakSelf = self;
-    self.timeObserver = [playback.player addPeriodicTimeObserverForInterval:CMTimeMakeWithSeconds(0.25, 600) queue:dispatch_get_main_queue() usingBlock:^(CMTime time) {
-        [weakSelf updateTime];
-    }];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(itemChanged) name:YMLocalPlaybackItemDidChangeNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(stateChanged) name:YMLocalPlaybackStateDidChangeNotification object:nil];
     [self itemChanged];
@@ -808,7 +825,58 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
 
 - (void)dealloc {
     [NSNotificationCenter.defaultCenter removeObserver:self];
-    if (self.timeObserver) [[YMLocalPlayback sharedPlayback].player removeTimeObserver:self.timeObserver];
+}
+
+// Picture in Picture follows the engine: the AVPlayerLayer on the native route, the
+// sample buffer layer (iOS 15+) on the VLC route.
+- (void)rebuildPictureInPictureIfNeeded {
+    YMLocalPlayback *playback = [YMLocalPlayback sharedPlayback];
+    YMPlaybackRoute route = playback.route;
+    if (self.pictureInPicture && self.pictureInPictureRoute == route) return;
+    if (self.pictureInPicture.isPictureInPictureActive) return;
+    self.pictureInPicture = nil;
+    self.pictureInPictureRoute = -1;
+    if (![AVPictureInPictureController isPictureInPictureSupported]) return;
+    if (route == YMPlaybackRouteNative) {
+        self.pictureInPicture = [[AVPictureInPictureController alloc] initWithPlayerLayer:self.videoView.playerLayer];
+    } else if (@available(iOS 15.0, *)) {
+        AVPictureInPictureControllerContentSource *source = [[AVPictureInPictureControllerContentSource alloc] initWithSampleBufferDisplayLayer:self.videoView.sampleLayer playbackDelegate:self];
+        self.pictureInPicture = [[AVPictureInPictureController alloc] initWithContentSource:source];
+    }
+    if (!self.pictureInPicture) return;
+    self.pictureInPictureRoute = route;
+    self.pictureInPicture.delegate = self;
+    if (@available(iOS 14.2, *)) self.pictureInPicture.canStartPictureInPictureAutomaticallyFromInline = YES;
+    playback.pictureInPicture = self.pictureInPicture;
+}
+
+#pragma mark Sample buffer PiP (VLC route)
+
+- (void)pictureInPictureController:(AVPictureInPictureController *)controller setPlaying:(BOOL)playing API_AVAILABLE(ios(15.0)) {
+    if (playing) [[YMLocalPlayback sharedPlayback] play];
+    else [[YMLocalPlayback sharedPlayback] pause];
+}
+
+- (CMTimeRange)pictureInPictureControllerTimeRangeForPlayback:(AVPictureInPictureController *)controller API_AVAILABLE(ios(15.0)) {
+    YMLocalPlayback *playback = [YMLocalPlayback sharedPlayback];
+    NSTimeInterval duration = playback.duration;
+    if (duration <= 0) return CMTimeRangeMake(kCMTimeNegativeInfinity, kCMTimePositiveInfinity);
+    // Expressed against the host clock so the PiP scrubber tracks VLC's position.
+    NSTimeInterval now = CMTimeGetSeconds(CMClockGetTime(CMClockGetHostTimeClock()));
+    NSTimeInterval start = now - playback.currentTime;
+    return CMTimeRangeMake(CMTimeMakeWithSeconds(start, 600), CMTimeMakeWithSeconds(duration, 600));
+}
+
+- (BOOL)pictureInPictureControllerIsPlaybackPaused:(AVPictureInPictureController *)controller API_AVAILABLE(ios(15.0)) {
+    return ![YMLocalPlayback sharedPlayback].isPlaying;
+}
+
+- (void)pictureInPictureController:(AVPictureInPictureController *)controller didTransitionToRenderSize:(CMVideoDimensions)newRenderSize API_AVAILABLE(ios(15.0)) {
+}
+
+- (void)pictureInPictureController:(AVPictureInPictureController *)controller skipByInterval:(CMTime)skipInterval completionHandler:(void (^)(void))completionHandler API_AVAILABLE(ios(15.0)) {
+    [[YMLocalPlayback sharedPlayback] seekBy:CMTimeGetSeconds(skipInterval)];
+    if (completionHandler) completionHandler();
 }
 
 #pragma mark Layout
@@ -944,6 +1012,7 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
     self.artworkView.tintColor = [UIColor colorWithWhite:1 alpha:0.6];
     self.artworkBackground.hidden = self.artworkView.hidden = item.isVideo;
     self.videoView.hidden = !item.isVideo;
+    [self rebuildPictureInPictureIfNeeded];
     self.pipButton.hidden = !item.isVideo || self.pictureInPicture == nil;
     self.fullscreenButton.hidden = !item.isVideo;
     [self rebuildActions];
@@ -952,6 +1021,9 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
 
 - (void)stateChanged {
     YMLocalPlayback *playback = [YMLocalPlayback sharedPlayback];
+    if (@available(iOS 15.0, *)) {
+        if (self.pictureInPictureRoute == YMPlaybackRouteVLC) [self.pictureInPicture invalidatePlaybackState];
+    }
     [self.playButton setImage:YMSymbol(playback.isPlaying ? @"pause.fill" : @"play.fill", 34, UIImageSymbolWeightSemibold) forState:UIControlStateNormal];
     self.nextButton.enabled = playback.hasNext;
     self.nextButton.alpha = playback.hasNext ? 1 : 0.4;
@@ -1118,6 +1190,8 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
 - (void)viewDidDisappear:(BOOL)animated {
     [super viewDidDisappear:animated];
     ymPlayerPresented = NO;
+    [self.ticker invalidate];
+    self.ticker = nil;
     self.orientationMask = UIInterfaceOrientationMaskAllButUpsideDown;
     self.content.transform = CGAffineTransformIdentity;
     [self.backdrop removeFromSuperview];
@@ -1127,6 +1201,9 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     ymPlayerPresented = YES;
+    [self.ticker invalidate];
+    __weak typeof(self) weakSelf = self;
+    self.ticker = [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *timer) { [weakSelf updateTime]; }];
     [self updateFullscreenButton];
     [self setControlsVisible:YES animated:NO];
 }
@@ -1273,8 +1350,10 @@ void YMLocalPlayerOpen(UIViewController *presenter, NSArray<YMDownloadItem *> *i
         [[YMDownloadLibrary sharedLibrary] reload];
         return;
     }
+    BOOL playable = NO;
+    YMLocalRouteForURL(item.fileURL, &playable);
     NSString *unsupported = YMLocalUnsupportedFormat(item.fileURL);
-    if (!unsupported) {
+    if (playable) {
         YMLocalPlayback *playback = [YMLocalPlayback sharedPlayback];
         if (playback.currentItem != item) [playback playItems:items startAtIndex:index];
         else [playback play];
@@ -1304,14 +1383,14 @@ void YMLocalPlayerOpen(UIViewController *presenter, NSArray<YMDownloadItem *> *i
 @property (nonatomic, strong) UIVisualEffectView *background;
 @property (nonatomic, strong) UIView *thumbContainer;
 @property (nonatomic, strong) UIImageView *thumbView;
-@property (nonatomic, strong) YMPlayerLayerView *videoView;
+@property (nonatomic, strong) YMLocalVideoView *videoView;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UILabel *subtitleLabel;
 @property (nonatomic, strong) UIButton *playButton;
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, strong) UIView *progressTrack;
 @property (nonatomic, strong) UIView *progressFill;
-@property (nonatomic, strong) id timeObserver;
+@property (nonatomic, strong) NSTimer *ticker;
 @end
 
 @implementation YMLocalMiniPlayerBar
@@ -1338,9 +1417,9 @@ void YMLocalPlayerOpen(UIViewController *presenter, NSArray<YMDownloadItem *> *i
         self.thumbView.contentMode = UIViewContentModeScaleAspectFill;
         self.thumbView.clipsToBounds = YES;
         [self.thumbContainer addSubview:self.thumbView];
-        self.videoView = [YMPlayerLayerView new];
-        self.videoView.playerLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
-        [[YMLocalPlayback sharedPlayback] registerPlayerLayer:self.videoView.playerLayer];
+        self.videoView = [YMLocalVideoView new];
+        self.videoView.videoGravity = AVLayerVideoGravityResizeAspectFill;
+        [[YMLocalPlayback sharedPlayback] registerVideoView:self.videoView];
         [self.thumbContainer addSubview:self.videoView];
 
         self.titleLabel = [UILabel new];
@@ -1373,10 +1452,6 @@ void YMLocalPlayerOpen(UIViewController *presenter, NSArray<YMDownloadItem *> *i
         swipe.direction = UISwipeGestureRecognizerDirectionUp;
         [self addGestureRecognizer:swipe];
 
-        __weak typeof(self) weakSelf = self;
-        self.timeObserver = [[YMLocalPlayback sharedPlayback].player addPeriodicTimeObserverForInterval:CMTimeMakeWithSeconds(0.5, 600) queue:dispatch_get_main_queue() usingBlock:^(CMTime time) {
-            [weakSelf setNeedsLayout];
-        }];
         [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(refresh) name:YMLocalPlaybackItemDidChangeNotification object:nil];
         [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(refresh) name:YMLocalPlaybackStateDidChangeNotification object:nil];
         [self refresh];
@@ -1386,7 +1461,15 @@ void YMLocalPlayerOpen(UIViewController *presenter, NSArray<YMDownloadItem *> *i
 
 - (void)dealloc {
     [NSNotificationCenter.defaultCenter removeObserver:self];
-    if (self.timeObserver) [[YMLocalPlayback sharedPlayback].player removeTimeObserver:self.timeObserver];
+}
+
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    [self.ticker invalidate];
+    self.ticker = nil;
+    if (!self.window) return;
+    __weak typeof(self) weakSelf = self;
+    self.ticker = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *timer) { [weakSelf setNeedsLayout]; }];
 }
 
 - (void)refresh {
