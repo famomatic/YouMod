@@ -382,6 +382,47 @@ static BOOL YMRadioIsYouTubePiP(AVPictureInPictureController *controller) {
 }
 %end
 
+// YouTube's PiP chain is YTPlayerPIPController -> MLPIPControllerImpl -> AVKit, and
+// YouPiP (bundled by the IPA workflow) adds its own way in. Radio Mode turns on
+// YouTube's own switch (pictureInPictureForceDisabled) and refuses every start;
+// as a last resort a PiP that starts anyway is closed at once. Separately, YouTube
+// can start PiP for a paused or finished video when the app goes to the background
+// (startPictureInPictureWithPaused:YES); that is only allowed right after the user
+// asked for PiP.
+static NSTimeInterval ymRadioManualPiPRequest = 0;
+
+static BOOL YMRadioRecentManualPiP(void) {
+    return NSDate.timeIntervalSinceReferenceDate - ymRadioManualPiPRequest < 2.0;
+}
+
+%hook YTPlayerPIPController
+- (BOOL)isPictureInPictureForceDisabled { return gYMRadioModeActive || %orig; }
+- (BOOL)isPictureInPicturePossible { return gYMRadioModeActive ? NO : %orig; }
+- (BOOL)canEnablePictureInPicture { return gYMRadioModeActive ? NO : %orig; }
+- (BOOL)isEligibleForPictureInPicture { return gYMRadioModeActive ? NO : %orig; }
+- (void)maybeTogglePictureInPicture {
+    if (gYMRadioModeActive) return;
+    ymRadioManualPiPRequest = NSDate.timeIntervalSinceReferenceDate;
+    %orig;
+}
+%end
+
+%hook MLPIPControllerImpl
+- (void)startPictureInPictureWithPaused:(BOOL)paused {
+    if (gYMRadioModeActive) return;
+    if (paused && !YMRadioRecentManualPiP()) return;
+    %orig;
+}
+- (void)pictureInPictureControllerDidStartPictureInPicture:(AVPictureInPictureController *)controller {
+    %orig;
+    BOOL paused = [(id)self respondsToSelector:@selector(pictureInPictureControllerIsPlaybackPaused:)] &&
+                  ((BOOL (*)(id, SEL, id))objc_msgSend)(self, @selector(pictureInPictureControllerIsPlaybackPaused:), controller);
+    if (gYMRadioModeActive || (paused && !YMRadioRecentManualPiP())) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [controller stopPictureInPicture]; });
+    }
+}
+%end
+
 // Re-sends what YouTube asked for; the setter hook above turns it into NO while
 // Radio Mode is on.
 static void YMRadioApplyPiPPolicy(void) {
