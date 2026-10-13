@@ -667,3 +667,6 @@
 "SORT_TITLE" = "Title";
 "UNSUPPORTED_FORMAT_MESSAGE" = "iOS can't play this file (%@). Convert it once to a playable MP4/M4A? This uses the hardware encoder and replaces the original.";
 "UNSUPPORTED_FORMAT_TITLE" = "Unsupported Format";
+"ZOOMED_TO_FILL" = "Zoomed to fill";
+"ORIGINAL_SIZE" = "Original size";
+"COPY_LINK_AT_TIME" = "Copy Link at Current Time";

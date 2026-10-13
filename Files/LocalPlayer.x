@@ -134,6 +134,8 @@ static YMPlaybackRoute YMLocalRouteForURL(NSURL *url, BOOL *playable) {
 - (instancetype)init {
     if ((self = [super init])) {
         _rate = 1.0f;
+        _volume = 1.0f;
+        _muted = [NSUserDefaults.standardUserDefaults boolForKey:KeepMutedKey];
         _videoViews = [NSHashTable weakObjectsHashTable];
         _artwork = [NSCache new];
         _commandTargets = [NSMutableArray array];
@@ -166,7 +168,38 @@ static YMPlaybackRoute YMLocalRouteForURL(NSURL *url, BOOL *playable) {
     engine.endHandler = ^{ [weakSelf engineReachedEnd]; };
     engine.failureHandler = ^{ [weakSelf engineFailed]; };
     [engine setRate:self.rate];
+    [engine setVolume:MIN(self.volume, engine.maximumVolume)];
+    [engine setMuted:self.muted];
     for (YMLocalVideoView *view in self.videoViews) [engine attachVideoView:view];
+}
+
+- (float)maximumVolume {
+    return self.engine ? self.engine.maximumVolume : 1.0f;
+}
+
+- (void)setVolume:(float)volume {
+    _volume = MIN(MAX(volume, 0), self.maximumVolume);
+    [self.engine setVolume:_volume];
+}
+
+- (void)setMuted:(BOOL)muted {
+    _muted = muted;
+    [NSUserDefaults.standardUserDefaults setBool:muted forKey:KeepMutedKey];
+    [self.engine setMuted:muted];
+    [self postState];
+}
+
+- (void)setAudioOnly:(BOOL)audioOnly {
+    _audioOnly = audioOnly;
+    [self updateVideoSuspension];
+    [self postState];
+}
+
+- (void)updateVideoSuspension {
+    BOOL suspended = self.audioOnly;
+    if (self.inBackground && !self.pictureInPicture.isPictureInPictureActive &&
+        !(ymPlayerPresented && self.pictureInPicture && self.currentItem.isVideo && self.isPlaying)) suspended = YES;
+    [self.engine setVideoSuspended:suspended];
 }
 
 - (YMPlaybackRoute)route {
@@ -209,6 +242,10 @@ static YMPlaybackRoute YMLocalRouteForURL(NSURL *url, BOOL *playable) {
     for (NSUInteger i = 0; i < items.count; i++) [self.order addObject:@(i)];
     self.position = index;
     if (self.shuffle) [self shuffleOrderKeepingCurrent];
+    // YouMod's default playback speed applies to downloads too.
+    NSInteger speedIndex = INTFORVAL(AutoSpeedIndex);
+    NSArray *speeds = @[@1.0, @0.25, @0.5, @0.75, @1.0, @1.25, @1.5, @1.75, @2.0, @3.0, @4.0, @5.0];
+    if (speedIndex > 0 && speedIndex < (NSInteger)speeds.count) _rate = [speeds[speedIndex] floatValue];
     [self loadCurrentAndPlay:YES];
 }
 
@@ -275,7 +312,7 @@ static YMPlaybackRoute YMLocalRouteForURL(NSURL *url, BOOL *playable) {
     if (resume <= 5 || (duration > 0 && resume >= duration - 5)) resume = 0;
     self.lastSavedPosition = resume;
     [self.engine loadURL:item.fileURL startTime:resume];
-    if (self.inBackground) [self.engine setVideoSuspended:YES];
+    [self updateVideoSuspension];
 
     if (!self.ticker) {
         __weak typeof(self) weakSelf = self;
@@ -414,18 +451,17 @@ static YMPlaybackRoute YMLocalRouteForURL(NSURL *url, BOOL *playable) {
     if (self.engine) [self.engine attachVideoView:view];
 }
 
+// In the background only the audio is decoded - unless the video is on screen,
+// where Picture in Picture starts automatically and needs it (it may not report
+// active yet at this point).
 - (void)appDidEnterBackground {
     self.inBackground = YES;
-    // With the video on screen, Picture in Picture starts automatically and needs
-    // the video; it may not report active yet at this point.
-    if (self.pictureInPicture.isPictureInPictureActive) return;
-    if (ymPlayerPresented && self.pictureInPicture && self.currentItem.isVideo && self.isPlaying) return;
-    [self.engine setVideoSuspended:YES];
+    [self updateVideoSuspension];
 }
 
 - (void)appWillEnterForeground {
     self.inBackground = NO;
-    [self.engine setVideoSuspended:NO];
+    [self updateVideoSuspension];
 }
 
 #pragma mark Now playing
@@ -557,6 +593,25 @@ static YMPlaybackRoute YMLocalRouteForURL(NSURL *url, BOOL *playable) {
 // a full-screen presentation may rotate to landscape).
 @property (nonatomic, strong) UIView *content;
 @property (nonatomic, strong) UIView *backdrop;
+// Gestures
+@property (nonatomic, strong) UITapGestureRecognizer *doubleTap;
+@property (nonatomic, strong) UIPanGestureRecognizer *panGesture;
+@property (nonatomic, strong) UILongPressGestureRecognizer *holdGesture;
+@property (nonatomic, assign) NSInteger panMode;
+@property (nonatomic, assign) double panStartValue;
+@property (nonatomic, strong) UILabel *gestureHUD;
+@property (nonatomic, strong) UILabel *speedToast;
+@property (nonatomic, assign) float holdSavedRate;
+@property (nonatomic, assign) BOOL holdLockPending;
+@property (nonatomic, assign) CGFloat holdStartY;
+@property (nonatomic, assign) NSTimeInterval lastDoubleTapTime;
+@property (nonatomic, assign) BOOL lastDoubleTapForward;
+@property (nonatomic, assign) NSTimeInterval doubleTapTotal;
+// YouMod overlay buttons and speed stepper
+@property (nonatomic, copy) NSArray<UIButton *> *overlayButtons;
+@property (nonatomic, strong) UIView *speedStepper;
+@property (nonatomic, strong) UILabel *stepperLabel;
+@property (nonatomic, assign) BOOL showsRemainingTime;
 @end
 
 static YMLocalPlayerViewController *ymSharedPlayerViewController;
@@ -636,6 +691,8 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
     self.pictureInPictureRoute = -1;
 
     [self buildControls];
+    [self buildSpeedStepper];
+    [self rebuildOverlayButtons];
     [self buildInfo];
 
     self.seekFeedback = [UILabel new];
@@ -648,16 +705,8 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
     self.seekFeedback.alpha = 0;
     [self.videoContainer addSubview:self.seekFeedback];
 
-    UITapGestureRecognizer *doubleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(videoDoubleTapped:)];
-    doubleTap.numberOfTapsRequired = 2;
-    [self.videoContainer addGestureRecognizer:doubleTap];
-    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(videoTapped:)];
-    [tap requireGestureRecognizerToFail:doubleTap];
-    [self.videoContainer addGestureRecognizer:tap];
-
-    UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(dismissPan:)];
-    pan.delegate = self;
-    [self.view addGestureRecognizer:pan];
+    [self installGestures];
+    self.showsRemainingTime = IS_ENABLED(AlwaysShowRemaining) && !IS_ENABLED(DisablesShowRemaining);
 
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(itemChanged) name:YMLocalPlaybackItemDidChangeNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(stateChanged) name:YMLocalPlaybackStateDidChangeNotification object:nil];
@@ -695,6 +744,8 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
     self.timeLabel.font = [UIFont monospacedDigitSystemFontOfSize:12 weight:UIFontWeightSemibold];
     self.timeLabel.textColor = UIColor.whiteColor;
     self.fullscreenButton = [self controlButton:@"arrow.up.left.and.arrow.down.right" size:16 action:@selector(toggleFullscreen)];
+    self.timeLabel.userInteractionEnabled = YES;
+    [self.timeLabel addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(timeLabelTapped)]];
 
     for (UIView *view in @[self.collapseButton, self.pipButton, self.speedButton, self.routePicker, self.previousButton, self.playButton, self.nextButton, self.timeLabel, self.fullscreenButton]) {
         [self.controls addSubview:view];
@@ -935,6 +986,11 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
     CGFloat timeY = landscape ? sliderY - 30 : h - 46;
     self.timeLabel.frame = CGRectMake(inner.left + 6, timeY, 200, 24);
     self.fullscreenButton.frame = CGRectMake(w - inner.right - 40, timeY - 8, 40, 40);
+    [self layoutOverlayButtonsWithInsets:inner timeY:timeY];
+    // The stepper sits under the transport buttons when there is room for it.
+    CGFloat stepperY = CGRectGetMaxY(self.playButton.frame) + 10;
+    self.speedStepper.hidden = ![self wantsSpeedStepper] || stepperY + 28 > timeY - 4;
+    self.speedStepper.center = CGPointMake(w / 2, stepperY + 14);
     self.seekFeedback.bounds = CGRectMake(0, 0, 92, 36);
 
     // In portrait the video sits on the page edge like YouTube's; keep its scrubber
@@ -1010,8 +1066,9 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
     self.artworkBackground.image = artwork;
     self.artworkView.image = artwork ?: YMSymbol(@"music.note", 44, UIImageSymbolWeightRegular);
     self.artworkView.tintColor = [UIColor colorWithWhite:1 alpha:0.6];
-    self.artworkBackground.hidden = self.artworkView.hidden = item.isVideo;
-    self.videoView.hidden = !item.isVideo;
+    BOOL showVideo = item.isVideo && !playback.audioOnly;
+    self.artworkBackground.hidden = self.artworkView.hidden = showVideo;
+    self.videoView.hidden = !showVideo;
     [self rebuildPictureInPictureIfNeeded];
     self.pipButton.hidden = !item.isVideo || self.pictureInPicture == nil;
     self.fullscreenButton.hidden = !item.isVideo;
@@ -1039,6 +1096,8 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
         [rates addObject:action];
     }
     self.speedButton.menu = [UIMenu menuWithTitle:LOC(@"PLAYBACK_SPEED") children:rates];
+    self.stepperLabel.text = rateTitle;
+    [self refreshOverlayButtons];
     [self rebuildActionsIfNeeded];
     [self updateTime];
     [self scheduleHide];
@@ -1063,7 +1122,20 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
     YMLocalPlayback *playback = [YMLocalPlayback sharedPlayback];
     NSTimeInterval duration = playback.duration;
     NSTimeInterval time = self.scrubbing ? self.slider.value * duration : playback.currentTime;
-    self.timeLabel.text = [NSString stringWithFormat:@"%@ / %@", YMLocalFormatTime(time), YMLocalFormatTime(duration)];
+    NSString *elapsed = self.showsRemainingTime ? [@"-" stringByAppendingString:YMLocalFormatTime(MAX(duration - time, 0))] : YMLocalFormatTime(time);
+    NSString *text = [NSString stringWithFormat:@"%@ / %@", elapsed, YMLocalFormatTime(duration)];
+    if (IS_ENABLED(ShowExtraTimeRemaining) && duration > 0) {
+        // YouMod: when playback ends at the current speed.
+        static NSDateFormatter *formatter;
+        if (!formatter) {
+            formatter = [NSDateFormatter new];
+            formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        }
+        formatter.dateFormat = IS_ENABLED(Uses24HoursTime) ? @"HH:mm" : @"h:mm a";
+        NSTimeInterval remaining = MAX(duration - time, 0) / MAX(playback.rate, 0.1f);
+        text = [text stringByAppendingFormat:@" · %@", [formatter stringFromDate:[NSDate dateWithTimeIntervalSinceNow:remaining]]];
+    }
+    self.timeLabel.text = text;
     if (!self.scrubbing) self.slider.value = duration > 0 ? (float)(time / duration) : 0;
     self.progressLine.progress = duration > 0 ? (float)(time / duration) : 0;
 }
@@ -1096,22 +1168,20 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
     [self setControlsVisible:!self.controlsVisible animated:YES];
 }
 
-- (void)videoDoubleTapped:(UITapGestureRecognizer *)tap {
-    CGPoint point = [tap locationInView:self.videoContainer];
-    CGFloat width = self.videoContainer.bounds.size.width;
-    if (point.x > width * 0.35 && point.x < width * 0.65) {
-        [[YMLocalPlayback sharedPlayback] togglePlayPause];
-        return;
-    }
-    BOOL forward = point.x >= width / 2;
-    [[YMLocalPlayback sharedPlayback] seekBy:forward ? 10 : -10];
-    self.seekFeedback.text = forward ? @"+10s" : @"−10s";
-    self.seekFeedback.center = CGPointMake(forward ? width * 0.78 : width * 0.22, self.videoContainer.bounds.size.height / 2);
-    self.seekFeedback.alpha = 1;
-    [UIView animateWithDuration:0.3 delay:0.5 options:0 animations:^{ self.seekFeedback.alpha = 0; } completion:nil];
+- (void)playTapped {
+    YMLocalPlayback *playback = [YMLocalPlayback sharedPlayback];
+    BOOL pausing = playback.isPlaying;
+    [playback togglePlayPause];
+    // YouMod "copy timestamp on pause".
+    if (pausing && IS_ENABLED(CopyWithTimestampOnPause)) [self copyLinkAtCurrentTime];
 }
 
-- (void)playTapped { [[YMLocalPlayback sharedPlayback] togglePlayPause]; }
+- (void)timeLabelTapped {
+    if (IS_ENABLED(DisablesShowRemaining)) return;
+    self.showsRemainingTime = !self.showsRemainingTime;
+    [self updateTime];
+    [self scheduleHide];
+}
 - (void)previousTapped { [[YMLocalPlayback sharedPlayback] previous]; [self scheduleHide]; }
 - (void)nextTapped { [[YMLocalPlayback sharedPlayback] next]; [self scheduleHide]; }
 
@@ -1167,6 +1237,545 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
     [self scheduleHide];
 }
 
+#pragma mark Gestures (YouTube's and YouMod's)
+
+typedef NS_ENUM(NSInteger, YMLocalPanMode) {
+    YMLocalPanNone,
+    YMLocalPanDismiss,        // drag the page down to the mini player
+    YMLocalPanEnterFullscreen,// swipe up on the video
+    YMLocalPanExitFullscreen, // swipe down on the video in landscape
+    YMLocalPanSeek,           // YouMod "seek on overlay": slide horizontally
+    YMLocalPanBrightness,     // YouMod gesture controls, per side
+    YMLocalPanVolume,
+    YMLocalPanSpeed,
+};
+
+- (void)installGestures {
+    // Double tap: YouTube's seek (left/right) - off with YouMod's "Disable double tap".
+    if (!IS_ENABLED(DisablesDoubleTap)) {
+        self.doubleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(videoDoubleTapped:)];
+        self.doubleTap.numberOfTapsRequired = 2;
+        [self.videoContainer addGestureRecognizer:self.doubleTap];
+    }
+    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(videoTapped:)];
+    if (self.doubleTap) [tap requireGestureRecognizerToFail:self.doubleTap];
+    [self.videoContainer addGestureRecognizer:tap];
+
+    // Two-finger tap to play/pause (YouMod).
+    if (IS_ENABLED(PauseTwoFingers)) {
+        UITapGestureRecognizer *twoFinger = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(twoFingerTapped:)];
+        twoFinger.numberOfTouchesRequired = 2;
+        [self.videoContainer addGestureRecognizer:twoFinger];
+        [tap requireGestureRecognizerToFail:twoFinger];
+    }
+
+    // Hold for speed: YouTube's 2x, or YouMod's hold-to-speed value.
+    if (INTFORVAL(HoldToSpeedIndex) != 0 || !IS_ENABLED(DisablesLongHold)) {
+        self.holdGesture = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(holdForSpeed:)];
+        self.holdGesture.minimumPressDuration = 0.4;
+        self.holdGesture.delegate = self;
+        [self.videoContainer addGestureRecognizer:self.holdGesture];
+    }
+
+    // Pinch: zoom to fill (YouTube) - off with YouMod's "Disable free zoom".
+    if (!IS_ENABLED(DisablesFreeZoom)) {
+        UIPinchGestureRecognizer *pinch = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(pinched:)];
+        [self.videoContainer addGestureRecognizer:pinch];
+    }
+
+    // One pan for everything vertical/horizontal; the mode is chosen when it begins.
+    UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(panned:)];
+    pan.delegate = self;
+    pan.maximumNumberOfTouches = 1;
+    [self.view addGestureRecognizer:pan];
+    self.panGesture = pan;
+}
+
+- (CGFloat)gestureAreaFraction {
+    switch (INTFORVAL(GestureActivationArea)) {
+        case 0: return 0.10; case 2: return 0.20; case 3: return 0.25; case 4: return 0.30;
+        case 5: return 0.35; case 6: return 0.40; case 7: return 0.45; case 8: return 0.50;
+        default: return 0.15;
+    }
+}
+
+// YouMod's side action at x (in the video): 0 none, 1 brightness, 2 volume, 3 speed.
+- (NSInteger)sideActionAtX:(CGFloat)x width:(CGFloat)width {
+    if (!IS_ENABLED(GestureControls) || width <= 0) return 0;
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    NSInteger left = [defaults objectForKey:LeftSideGesture] ? INTFORVAL(LeftSideGesture) : 1;
+    NSInteger right = [defaults objectForKey:RightSideGesture] ? INTFORVAL(RightSideGesture) : 2;
+    CGFloat area = [self gestureAreaFraction];
+    if (x <= width * area) return left;
+    if (x >= width * (1 - area)) return right;
+    return 0;
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gesture {
+    if (gesture == self.holdGesture) {
+        return self.panMode == YMLocalPanNone && [YMLocalPlayback sharedPlayback].isPlaying;
+    }
+    if (gesture != self.panGesture) return YES;
+    UIPanGestureRecognizer *pan = (UIPanGestureRecognizer *)gesture;
+    CGPoint point = [pan locationInView:self.view];
+    CGPoint velocity = [pan velocityInView:self.view];
+    UIView *hit = [self.view hitTest:point withEvent:nil];
+    if ([hit isKindOfClass:UIControl.class] || [self.slider pointInside:[pan locationInView:self.slider] withEvent:nil]) return NO;
+    if (self.holdGesture.state == UIGestureRecognizerStateBegan || self.holdGesture.state == UIGestureRecognizerStateChanged) return NO;
+
+    BOOL horizontal = fabs(velocity.x) > fabs(velocity.y);
+    BOOL landscape = [self isLandscape];
+    CGRect videoFrame = [self.videoContainer convertRect:self.videoContainer.bounds toView:self.view];
+    self.panMode = YMLocalPanNone;
+
+    if (CGRectContainsPoint(videoFrame, point)) {
+        CGPoint inVideo = [pan locationInView:self.videoContainer];
+        if (horizontal) {
+            if (IS_ENABLED(SeekOnOverlay)) self.panMode = YMLocalPanSeek;
+        } else {
+            NSInteger side = [self sideActionAtX:inVideo.x width:self.videoContainer.bounds.size.width];
+            if (side == 1) self.panMode = YMLocalPanBrightness;
+            else if (side == 2) self.panMode = YMLocalPanVolume;
+            else if (side == 3) self.panMode = YMLocalPanSpeed;
+            else if (velocity.y < 0) self.panMode = (!landscape && [YMLocalPlayback sharedPlayback].currentItem.isVideo && !isPad()) ? YMLocalPanEnterFullscreen : YMLocalPanNone;
+            else self.panMode = landscape ? YMLocalPanExitFullscreen : YMLocalPanDismiss;
+        }
+    } else if (!landscape && !horizontal && velocity.y > 0) {
+        // From the info area only when it is scrolled to the top.
+        if (!(CGRectContainsPoint(self.infoScroll.frame, point) && self.infoScroll.contentOffset.y > 0)) self.panMode = YMLocalPanDismiss;
+    }
+    return self.panMode != YMLocalPanNone;
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
+    return NO;
+}
+
+- (void)panned:(UIPanGestureRecognizer *)pan {
+    switch (self.panMode) {
+        case YMLocalPanDismiss: [self dismissPan:pan]; break;
+        case YMLocalPanSeek: [self seekPan:pan]; break;
+        case YMLocalPanBrightness:
+        case YMLocalPanVolume:
+        case YMLocalPanSpeed: [self sidePan:pan]; break;
+        case YMLocalPanEnterFullscreen:
+        case YMLocalPanExitFullscreen:
+            if (pan.state == UIGestureRecognizerStateEnded) {
+                CGFloat dy = [pan translationInView:self.view].y;
+                BOOL enter = self.panMode == YMLocalPanEnterFullscreen;
+                if ((enter && dy < -40) || (!enter && dy > 40)) [self toggleFullscreen];
+            }
+            break;
+        default: break;
+    }
+    if (pan.state == UIGestureRecognizerStateEnded || pan.state == UIGestureRecognizerStateCancelled || pan.state == UIGestureRecognizerStateFailed) {
+        self.panMode = YMLocalPanNone;
+    }
+}
+
+// Slide to seek: a full width covers the video (up to five minutes for long ones).
+- (void)seekPan:(UIPanGestureRecognizer *)pan {
+    YMLocalPlayback *playback = [YMLocalPlayback sharedPlayback];
+    NSTimeInterval duration = playback.duration;
+    if (pan.state == UIGestureRecognizerStateBegan) {
+        self.panStartValue = playback.currentTime;
+        self.scrubbing = YES;
+        [self setControlsVisible:YES animated:YES];
+    }
+    CGFloat width = MAX(self.videoContainer.bounds.size.width, 1);
+    NSTimeInterval span = MIN(MAX(duration, 30), 300);
+    NSTimeInterval target = MIN(MAX(self.panStartValue + [pan translationInView:self.view].x / width * span, 0), MAX(duration - 0.5, 0));
+    if (pan.state == UIGestureRecognizerStateBegan || pan.state == UIGestureRecognizerStateChanged) {
+        if (duration > 0) self.slider.value = target / duration;
+        [self updateTime];
+        NSTimeInterval delta = target - self.panStartValue;
+        [self showHUDWithSymbol:delta >= 0 ? @"forward.fill" : @"backward.fill"
+                           text:[NSString stringWithFormat:@" %@ (%@%@)", YMLocalFormatTime(target), delta >= 0 ? @"+" : @"−", YMLocalFormatTime(fabs(delta))]
+                       position:1];
+    } else {
+        if (pan.state == UIGestureRecognizerStateEnded) [playback seekToTime:target];
+        self.scrubbing = NO;
+        [self hideHUD];
+        [self scheduleHide];
+    }
+}
+
+// YouMod gesture controls: brightness / volume / speed on the sides.
+- (void)sidePan:(UIPanGestureRecognizer *)pan {
+    YMLocalPlayback *playback = [YMLocalPlayback sharedPlayback];
+    static MPVolumeView *volumeView;
+    static UISlider *volumeSlider;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        volumeView = [[MPVolumeView alloc] initWithFrame:CGRectMake(-1000, -1000, 10, 10)];
+        for (UIView *view in volumeView.subviews) if ([view isKindOfClass:UISlider.class]) volumeSlider = (UISlider *)view;
+    });
+    BOOL appVolume = INTFORVAL(VolumeGestureTarget) == 1;
+    if (pan.state == UIGestureRecognizerStateBegan) {
+        if (self.panMode == YMLocalPanBrightness) self.panStartValue = UIScreen.mainScreen.brightness;
+        else if (self.panMode == YMLocalPanVolume) self.panStartValue = appVolume ? playback.volume : AVAudioSession.sharedInstance.outputVolume;
+        else self.panStartValue = playback.rate;
+        if (!appVolume && !volumeView.superview) [self.view addSubview:volumeView];
+        return;
+    }
+    if (pan.state != UIGestureRecognizerStateChanged) {
+        [self hideHUD];
+        return;
+    }
+    CGFloat delta = -[pan translationInView:self.view].y / MAX(self.videoContainer.bounds.size.height, 1);
+    NSString *symbol = nil, *text = nil;
+    if (self.panMode == YMLocalPanBrightness) {
+        CGFloat value = MIN(MAX(self.panStartValue + delta, 0), 1);
+        UIScreen.mainScreen.brightness = value;
+        symbol = value <= 0.5 ? @"sun.min.fill" : @"sun.max.fill";
+        text = [NSString stringWithFormat:@" %d%%", (int)(value * 100)];
+    } else if (self.panMode == YMLocalPanVolume) {
+        if (appVolume) {
+            // App volume: the VLC route boosts up to 200%.
+            float value = MIN(MAX(self.panStartValue + delta * playback.maximumVolume, 0), playback.maximumVolume);
+            playback.volume = value;
+            symbol = value == 0 ? @"speaker.slash.fill" : (value <= 1 ? @"speaker.wave.1.fill" : @"speaker.wave.3.fill");
+            text = [NSString stringWithFormat:@" %d%%", (int)lroundf(value * 100)];
+        } else {
+            float value = MIN(MAX(self.panStartValue + delta, 0), 1);
+            volumeSlider.value = value;
+            symbol = value == 0 ? @"speaker.slash.fill" : (value <= 0.33 ? @"speaker.wave.1.fill" : (value <= 0.66 ? @"speaker.wave.2.fill" : @"speaker.wave.3.fill"));
+            text = [NSString stringWithFormat:@" %d%%", (int)(value * 100)];
+        }
+    } else {
+        // 0.05 steps, like YouMod's speed gesture.
+        float value = roundf(MIN(MAX(self.panStartValue + delta * 8, 0.25), 4.0) * 20) / 20;
+        if (fabsf(value - playback.rate) > 0.001f) playback.rate = value;
+        symbol = value < 1 ? @"tortoise.fill" : (value == 1 ? @"speedometer" : @"hare.fill");
+        text = [NSString stringWithFormat:@" %.2fx", value];
+    }
+    [self showHUDWithSymbol:symbol text:text position:-1];
+}
+
+// YouMod's gesture HUD (size/position settings honored); position -1 = the setting.
+- (void)showHUDWithSymbol:(NSString *)symbol text:(NSString *)text position:(NSInteger)position {
+    if (!IS_ENABLED(GestureHUD) && position < 0) return;
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    NSInteger size = [defaults objectForKey:GestureHUDSize] ? [defaults integerForKey:GestureHUDSize] : 1;
+    if (position < 0) position = [defaults objectForKey:GestureHUDPosition] ? [defaults integerForKey:GestureHUDPosition] : 0;
+    UILabel *hud = self.gestureHUD;
+    if (!hud) {
+        hud = [UILabel new];
+        hud.backgroundColor = [UIColor colorWithWhite:0 alpha:0.55];
+        hud.textColor = [UIColor colorWithWhite:1 alpha:0.9];
+        hud.textAlignment = NSTextAlignmentCenter;
+        hud.layer.masksToBounds = YES;
+        hud.alpha = 0;
+        [self.videoContainer addSubview:hud];
+        self.gestureHUD = hud;
+    }
+    hud.font = [UIFont monospacedDigitSystemFontOfSize:14 + size * 2 weight:UIFontWeightBold];
+    NSMutableAttributedString *string = [NSMutableAttributedString new];
+    if (symbol) {
+        NSTextAttachment *attachment = [NSTextAttachment new];
+        UIImage *icon = [[UIImage systemImageNamed:symbol withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:hud.font.pointSize - 1]] imageWithTintColor:hud.textColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+        attachment.image = icon;
+        attachment.bounds = CGRectMake(0, (hud.font.capHeight - icon.size.height) / 2, icon.size.width, icon.size.height);
+        [string appendAttributedString:[NSAttributedString attributedStringWithAttachment:attachment]];
+    }
+    [string appendAttributedString:[[NSAttributedString alloc] initWithString:text ?: @"" attributes:@{NSFontAttributeName: hud.font, NSForegroundColorAttributeName: hud.textColor}]];
+    hud.attributedText = string;
+    CGSize fit = [hud sizeThatFits:CGSizeMake(400, 100)];
+    CGFloat height = 30 + size * 4;
+    hud.bounds = CGRectMake(0, 0, MAX(fit.width + 28, 74 + size * 10), height);
+    hud.layer.cornerRadius = height / 2;
+    CGFloat videoHeight = self.videoContainer.bounds.size.height;
+    CGFloat y = position == 1 ? videoHeight / 2 : (position == 2 ? videoHeight * 5 / 6 : videoHeight / 6);
+    hud.center = CGPointMake(self.videoContainer.bounds.size.width / 2, MAX(y, height / 2 + 4));
+    [self.videoContainer bringSubviewToFront:hud];
+    [hud.layer removeAllAnimations];
+    hud.alpha = 1;
+}
+
+- (void)hideHUD {
+    [UIView animateWithDuration:0.3 delay:0.4 options:UIViewAnimationOptionBeginFromCurrentState animations:^{ self.gestureHUD.alpha = 0; } completion:nil];
+}
+
+// Double tap seek, YouTube style: repeated taps on the same side add up.
+- (void)videoDoubleTapped:(UITapGestureRecognizer *)tap {
+    CGPoint point = [tap locationInView:self.videoContainer];
+    CGFloat width = self.videoContainer.bounds.size.width;
+    YMLocalPlayback *playback = [YMLocalPlayback sharedPlayback];
+    if (point.x > width * 0.35 && point.x < width * 0.65) {
+        [playback togglePlayPause];
+        return;
+    }
+    BOOL forward = point.x >= width / 2;
+    NSTimeInterval now = NSDate.timeIntervalSinceReferenceDate;
+    if (now - self.lastDoubleTapTime > 1.2 || self.lastDoubleTapForward != forward) self.doubleTapTotal = 0;
+    self.lastDoubleTapTime = now;
+    self.lastDoubleTapForward = forward;
+    self.doubleTapTotal += 10;
+    [playback seekBy:forward ? 10 : -10];
+    self.seekFeedback.text = [NSString stringWithFormat:@"%@%ds", forward ? @"+" : @"−", (int)self.doubleTapTotal];
+    self.seekFeedback.center = CGPointMake(forward ? width * 0.78 : width * 0.22, self.videoContainer.bounds.size.height / 2);
+    [self.seekFeedback.layer removeAllAnimations];
+    self.seekFeedback.alpha = 1;
+    [UIView animateWithDuration:0.3 delay:0.7 options:UIViewAnimationOptionAllowUserInteraction animations:^{ self.seekFeedback.alpha = 0; } completion:nil];
+}
+
+- (void)twoFingerTapped:(UITapGestureRecognizer *)tap {
+    [self playTapped];
+}
+
+// Hold for speed. With YouMod's "lock speed", dragging down while holding keeps it.
+- (void)holdForSpeed:(UILongPressGestureRecognizer *)gesture {
+    YMLocalPlayback *playback = [YMLocalPlayback sharedPlayback];
+    NSInteger index = INTFORVAL(HoldToSpeedIndex);
+    NSArray *speeds = @[@2.0, @0.25, @0.5, @0.75, @1.0, @1.25, @1.5, @1.75, @2.0, @3.0, @4.0, @5.0];
+    float speed = index > 0 && index < (NSInteger)speeds.count ? [speeds[index] floatValue] : 2.0f;
+    switch (gesture.state) {
+        case UIGestureRecognizerStateBegan:
+            self.holdSavedRate = playback.rate;
+            self.holdLockPending = NO;
+            self.holdStartY = [gesture locationInView:self.videoContainer].y;
+            playback.rate = speed;
+            [self showSpeedToast:speed locked:NO];
+            [[UIImpactFeedbackGenerator new] impactOccurred];
+            break;
+        case UIGestureRecognizerStateChanged: {
+            if (!IS_ENABLED(LockSpeed)) break;
+            CGFloat dy = [gesture locationInView:self.videoContainer].y - self.holdStartY;
+            BOOL pending = self.holdLockPending ? dy > 20 : dy > 40;
+            if (pending != self.holdLockPending) {
+                self.holdLockPending = pending;
+                [[[UIImpactFeedbackGenerator alloc] initWithStyle:pending ? UIImpactFeedbackStyleMedium : UIImpactFeedbackStyleLight] impactOccurred];
+                [self showSpeedToast:speed locked:pending];
+            }
+            break;
+        }
+        case UIGestureRecognizerStateEnded:
+        case UIGestureRecognizerStateCancelled:
+        case UIGestureRecognizerStateFailed: {
+            if (!self.holdLockPending) playback.rate = self.holdSavedRate > 0 ? self.holdSavedRate : 1.0f;
+            self.holdLockPending = NO;
+            [UIView animateWithDuration:0.2 animations:^{ self.speedToast.alpha = 0; }];
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+- (void)showSpeedToast:(float)speed locked:(BOOL)locked {
+    if (!self.speedToast) {
+        UILabel *toast = [UILabel new];
+        toast.backgroundColor = [UIColor colorWithWhite:0 alpha:0.55];
+        toast.textColor = UIColor.whiteColor;
+        toast.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+        toast.textAlignment = NSTextAlignmentCenter;
+        toast.layer.cornerRadius = 16;
+        toast.layer.masksToBounds = YES;
+        [self.videoContainer addSubview:toast];
+        self.speedToast = toast;
+    }
+    NSString *symbol = locked ? @"lock.fill" : @"forward.fill";
+    NSMutableAttributedString *text = [[NSMutableAttributedString alloc] initWithString:[NSString stringWithFormat:@"%gx ", speed] attributes:@{NSFontAttributeName: self.speedToast.font, NSForegroundColorAttributeName: UIColor.whiteColor}];
+    NSTextAttachment *attachment = [NSTextAttachment new];
+    attachment.image = [[UIImage systemImageNamed:symbol withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightBold]] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+    [text appendAttributedString:[NSAttributedString attributedStringWithAttachment:attachment]];
+    self.speedToast.attributedText = text;
+    CGSize fit = [self.speedToast sizeThatFits:CGSizeMake(200, 32)];
+    CGFloat top = [self isLandscape] ? MAX(self.view.safeAreaInsets.top, 12) : 12;
+    self.speedToast.frame = CGRectMake((self.videoContainer.bounds.size.width - fit.width - 28) / 2, top, fit.width + 28, 32);
+    [self.videoContainer bringSubviewToFront:self.speedToast];
+    self.speedToast.alpha = 1;
+}
+
+// Pinch out fills the screen (crop), pinch in fits the video back; in portrait a
+// pinch out goes full screen first.
+- (void)pinched:(UIPinchGestureRecognizer *)pinch {
+    if (pinch.state != UIGestureRecognizerStateEnded) return;
+    if (![self isLandscape]) {
+        if (pinch.scale > 1.2 && [YMLocalPlayback sharedPlayback].currentItem.isVideo && !isPad()) [self toggleFullscreen];
+        return;
+    }
+    BOOL fill = pinch.scale > 1.05;
+    if (pinch.scale > 0.95 && pinch.scale < 1.05) return;
+    self.videoView.videoGravity = fill ? AVLayerVideoGravityResizeAspectFill : AVLayerVideoGravityResizeAspect;
+    [self showHUDWithSymbol:fill ? @"arrow.up.left.and.arrow.down.right" : @"arrow.down.right.and.arrow.up.left" text:fill ? LOC(@"ZOOMED_TO_FILL") : LOC(@"ORIGINAL_SIZE") position:1];
+    [self hideHUD];
+}
+
+#pragma mark YouMod overlay buttons
+
+// The overlay buttons that make sense for a local file, in the order and with the
+// on/off state set in YouMod's overlay button settings. Download, SponsorBlock,
+// quality and captions need YouTube's servers and are left out.
+- (NSArray<YMOverlayButtonSpec *> *)localOverlaySpecs {
+    NSSet *supported = [NSSet setWithArray:@[@"mute.video", @"speed.video", @"share.video", @"loop.video", @"radio.video"]];
+    NSMutableArray *specs = [NSMutableArray array];
+    for (YMOverlayButtonSpec *spec in YMOrderedOverlayButtons()) {
+        if ([supported containsObject:spec.identifier] && YMIsOverlayButtonEnabled(spec.identifier)) [specs addObject:spec];
+    }
+    return specs;
+}
+
+- (UIButton *)overlayButtonForSpec:(YMOverlayButtonSpec *)spec {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    button.tintColor = UIColor.whiteColor;
+    button.backgroundColor = [UIColor colorWithWhite:0 alpha:0.35];
+    button.layer.cornerRadius = 16;
+    button.titleLabel.font = [UIFont monospacedDigitSystemFontOfSize:12 weight:UIFontWeightBold];
+    button.accessibilityIdentifier = spec.identifier;
+    button.accessibilityLabel = spec.displayName;
+    __weak typeof(self) weakSelf = self;
+    NSString *identifier = spec.identifier;
+    if ([identifier isEqualToString:@"speed.video"]) {
+        button.showsMenuAsPrimaryAction = YES;
+    } else if ([identifier isEqualToString:@"share.video"]) {
+        button.showsMenuAsPrimaryAction = YES;
+        [button setImage:YMSymbol(@"arrowshape.turn.up.right", 14, UIImageSymbolWeightSemibold) forState:UIControlStateNormal];
+    } else {
+        [button addAction:[UIAction actionWithHandler:^(UIAction *a) { [weakSelf overlayButtonTapped:identifier]; }] forControlEvents:UIControlEventTouchUpInside];
+    }
+    return button;
+}
+
+- (void)rebuildOverlayButtons {
+    for (UIButton *button in self.overlayButtons) [button removeFromSuperview];
+    NSMutableArray *buttons = [NSMutableArray array];
+    for (YMOverlayButtonSpec *spec in [self localOverlaySpecs]) {
+        UIButton *button = [self overlayButtonForSpec:spec];
+        [self.controls addSubview:button];
+        [buttons addObject:button];
+    }
+    self.overlayButtons = buttons;
+    [self refreshOverlayButtons];
+}
+
+- (UIButton *)overlayButton:(NSString *)identifier {
+    for (UIButton *button in self.overlayButtons) if ([button.accessibilityIdentifier isEqualToString:identifier]) return button;
+    return nil;
+}
+
+- (void)refreshOverlayButtons {
+    YMLocalPlayback *playback = [YMLocalPlayback sharedPlayback];
+    YMDownloadItem *item = playback.currentItem;
+    UIButton *mute = [self overlayButton:@"mute.video"];
+    [mute setImage:YMSymbol(playback.muted ? @"speaker.slash" : @"speaker.wave.2", 14, UIImageSymbolWeightSemibold) forState:UIControlStateNormal];
+    UIButton *loop = [self overlayButton:@"loop.video"];
+    BOOL looping = playback.repeatMode == YMRepeatModeOne;
+    [loop setImage:YMSymbol(looping ? @"repeat.1" : @"repeat", 14, UIImageSymbolWeightSemibold) forState:UIControlStateNormal];
+    loop.tintColor = looping ? UIColor.systemRedColor : UIColor.whiteColor;
+    UIButton *radio = [self overlayButton:@"radio.video"];
+    [radio setImage:YMSymbol(@"headphones", 14, UIImageSymbolWeightSemibold) forState:UIControlStateNormal];
+    radio.tintColor = playback.audioOnly ? UIColor.systemRedColor : UIColor.whiteColor;
+    radio.hidden = !item.isVideo;
+    UIButton *speed = [self overlayButton:@"speed.video"];
+    [speed setTitle:[self rateTitle:playback.rate] forState:UIControlStateNormal];
+    speed.menu = self.speedButton.menu;
+    // The tweak's speed button replaces the built-in one.
+    self.speedButton.hidden = speed != nil;
+    UIButton *share = [self overlayButton:@"share.video"];
+    if (share && item) {
+        __weak typeof(self) weakSelf = self;
+        NSMutableArray *actions = [NSMutableArray arrayWithObject:[UIAction actionWithTitle:LOC(@"SHARE") image:[UIImage systemImageNamed:@"square.and.arrow.up"] identifier:nil handler:^(UIAction *a) {
+            YMDownloadShareFile(item.fileURL, weakSelf);
+        }]];
+        if (item.videoID.length) {
+            [actions addObject:[UIAction actionWithTitle:LOC(@"COPY_LINK_AT_TIME") image:[UIImage systemImageNamed:@"link"] identifier:nil handler:^(UIAction *a) {
+                [weakSelf copyLinkAtCurrentTime];
+            }]];
+        }
+        share.menu = [UIMenu menuWithTitle:@"" children:actions];
+    }
+    [self.view setNeedsLayout];
+}
+
+- (void)overlayButtonTapped:(NSString *)identifier {
+    YMLocalPlayback *playback = [YMLocalPlayback sharedPlayback];
+    if ([identifier isEqualToString:@"mute.video"]) {
+        playback.muted = !playback.muted;
+    } else if ([identifier isEqualToString:@"loop.video"]) {
+        playback.repeatMode = playback.repeatMode == YMRepeatModeOne ? YMRepeatModeOff : YMRepeatModeOne;
+    } else if ([identifier isEqualToString:@"radio.video"]) {
+        playback.audioOnly = !playback.audioOnly;
+        [self itemChanged];
+    }
+    [self refreshOverlayButtons];
+    [self scheduleHide];
+}
+
+- (void)copyLinkAtCurrentTime {
+    YMLocalPlayback *playback = [YMLocalPlayback sharedPlayback];
+    NSString *videoID = playback.currentItem.videoID;
+    if (!videoID.length) return;
+    UIPasteboard.generalPasteboard.string = [NSString stringWithFormat:@"https://www.youtube.com/watch?v=%@&t=%lds", videoID, (long)playback.currentTime];
+    YMDownloadShowToast(LOC(@"COPIED_TO_CLIPBOARD"), NO);
+}
+
+// Rows of overlay buttons in YouMod's chosen corner (and offset).
+- (void)layoutOverlayButtonsWithInsets:(UIEdgeInsets)inner timeY:(CGFloat)timeY {
+    NSMutableArray *visible = [NSMutableArray array];
+    for (UIButton *button in self.overlayButtons) if (!button.hidden) [visible addObject:button];
+    if (!visible.count) return;
+    NSInteger corner = INTFORVAL(OverlayButtonCorner);
+    CGFloat offsetX = [NSUserDefaults.standardUserDefaults floatForKey:OverlayButtonOffsetX];
+    CGFloat offsetY = [NSUserDefaults.standardUserDefaults floatForKey:OverlayButtonOffsetY];
+    BOOL right = corner == 0 || corner == 2;
+    BOOL bottom = corner == 2 || corner == 3;
+    CGFloat size = 32, gap = 8;
+    CGFloat y = bottom ? timeY - size - 6 : inner.top + 46;
+    CGFloat x = right ? self.controls.bounds.size.width - inner.right - 4 : inner.left + 4;
+    for (UIButton *button in visible) {
+        CGFloat width = size;
+        if (button.currentTitle.length) width = MAX(size, [button.titleLabel sizeThatFits:CGSizeMake(80, size)].width + 18);
+        CGFloat bx = right ? x - width : x;
+        button.frame = CGRectMake(bx + offsetX, y + offsetY, width, size);
+        x = right ? bx - gap : bx + width + gap;
+    }
+}
+
+#pragma mark Speed stepper (YouMod "button" speed control)
+
+- (BOOL)wantsSpeedStepper {
+    return IS_ENABLED(ShowSpeedSlider) && INTFORVAL(SpeedControlStyle) == 1;
+}
+
+- (void)buildSpeedStepper {
+    UIView *stepper = [UIView new];
+    UIButton *minus = [UIButton buttonWithType:UIButtonTypeSystem];
+    UIButton *plus = [UIButton buttonWithType:UIButtonTypeSystem];
+    UILabel *label = [UILabel new];
+    for (UIButton *button in @[minus, plus]) {
+        button.tintColor = UIColor.whiteColor;
+        button.backgroundColor = [UIColor colorWithWhite:0 alpha:0.45];
+        button.layer.cornerRadius = 14;
+    }
+    [minus setImage:YMSymbol(@"minus", 12, UIImageSymbolWeightBold) forState:UIControlStateNormal];
+    [plus setImage:YMSymbol(@"plus", 12, UIImageSymbolWeightBold) forState:UIControlStateNormal];
+    [minus addAction:[UIAction actionWithHandler:^(UIAction *a) {
+        YMLocalPlayback *p = [YMLocalPlayback sharedPlayback];
+        p.rate = MAX(0.25f, roundf((p.rate - 0.05f) * 20) / 20);
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [plus addAction:[UIAction actionWithHandler:^(UIAction *a) {
+        YMLocalPlayback *p = [YMLocalPlayback sharedPlayback];
+        p.rate = MIN(4.0f, roundf((p.rate + 0.05f) * 20) / 20);
+    }] forControlEvents:UIControlEventTouchUpInside];
+    label.font = [UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightBold];
+    label.textColor = UIColor.whiteColor;
+    label.textAlignment = NSTextAlignmentCenter;
+    label.backgroundColor = [UIColor colorWithWhite:0 alpha:0.45];
+    label.layer.cornerRadius = 12;
+    label.layer.masksToBounds = YES;
+    minus.frame = CGRectMake(0, 0, 28, 28);
+    label.frame = CGRectMake(34, 2, 56, 24);
+    plus.frame = CGRectMake(96, 0, 28, 28);
+    [stepper addSubview:minus];
+    [stepper addSubview:label];
+    [stepper addSubview:plus];
+    stepper.bounds = CGRectMake(0, 0, 124, 28);
+    self.stepperLabel = label;
+    self.speedStepper = stepper;
+    [self.controls addSubview:stepper];
+}
+
 #pragma mark Dismiss
 
 - (void)collapse {
@@ -1205,17 +1814,8 @@ static void YMRequestOrientation(UIViewController *vc, UIInterfaceOrientationMas
     __weak typeof(self) weakSelf = self;
     self.ticker = [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *timer) { [weakSelf updateTime]; }];
     [self updateFullscreenButton];
+    [self rebuildOverlayButtons];
     [self setControlsVisible:YES animated:NO];
-}
-
-- (BOOL)gestureRecognizerShouldBegin:(UIPanGestureRecognizer *)pan {
-    if (![pan isKindOfClass:UIPanGestureRecognizer.class] || [self isLandscape]) return NO;
-    CGPoint velocity = [pan velocityInView:self.view];
-    if (velocity.y <= 0 || fabs(velocity.y) < fabs(velocity.x)) return NO;
-    // From the info area only when it is scrolled to the top.
-    CGPoint point = [pan locationInView:self.view];
-    if (CGRectContainsPoint(self.infoScroll.frame, point) && self.infoScroll.contentOffset.y > 0) return NO;
-    return ![self.slider pointInside:[pan locationInView:self.slider] withEvent:nil];
 }
 
 - (void)dismissPan:(UIPanGestureRecognizer *)pan {

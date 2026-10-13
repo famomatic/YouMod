@@ -145,6 +145,10 @@
     if (self.isPlaying) self.player.rate = rate;
 }
 
+- (void)setVolume:(float)volume { self.player.volume = MIN(MAX(volume, 0), 1); }
+- (void)setMuted:(BOOL)muted { self.player.muted = muted; }
+- (float)maximumVolume { return 1.0f; }
+
 - (void)attachVideoView:(YMLocalVideoView *)view {
     [self.views addObject:view];
     [view showRoute:YMPlaybackRouteNative];
@@ -206,6 +210,8 @@ static int (*vlc_event_attach)(libvlc_event_manager_t *, int, void (*)(const ym_
 static int (*vlc_video_get_track)(libvlc_media_player_t *);
 static int (*vlc_video_set_track)(libvlc_media_player_t *, int);
 static void (*vlc_video_set_callbacks)(libvlc_media_player_t *, void *(*)(void *, void **), void (*)(void *, void *, void *const *), void (*)(void *, void *), void *);
+static int (*vlc_audio_set_volume)(libvlc_media_player_t *, int);
+static void (*vlc_audio_set_mute)(libvlc_media_player_t *, int);
 static void (*vlc_video_set_format_callbacks)(libvlc_media_player_t *, unsigned (*)(void **, char *, unsigned *, unsigned *, unsigned *, unsigned *), void (*)(void *));
 
 static NSMutableArray<NSString *> *YMVLCLog(void) {
@@ -265,6 +271,8 @@ static BOOL YMVLCLoad(void) {
         YM_VLC_SYM(vlc_video_set_track, "libvlc_video_set_track");
         YM_VLC_SYM(vlc_video_set_callbacks, "libvlc_video_set_callbacks");
         YM_VLC_SYM(vlc_video_set_format_callbacks, "libvlc_video_set_format_callbacks");
+        YM_VLC_SYM(vlc_audio_set_volume, "libvlc_audio_set_volume");
+        YM_VLC_SYM(vlc_audio_set_mute, "libvlc_audio_set_mute");
 #undef YM_VLC_SYM
         const char *args[] = {
             "--no-video-title-show", "--no-osd", "--no-snapshot-preview", "--no-stats",
@@ -313,6 +321,8 @@ typedef struct {
 @property (nonatomic, assign) float rate;
 @property (nonatomic, assign) NSTimeInterval pendingStart;
 @property (nonatomic, strong) NSURL *url;
+@property (nonatomic, assign) float volume;
+@property (nonatomic, assign) BOOL muted;
 @end
 
 static void YMVLCEventCallback(const ym_libvlc_event_t *event, void *data);
@@ -334,6 +344,7 @@ static void YMVLCDisplay(void *opaque, void *picture);
         _views = [NSHashTable weakObjectsHashTable];
         _layerSnapshot = @[];
         _rate = 1.0f;
+        _volume = 1.0f;
         _savedVideoTrack = -2;
     }
     return self;
@@ -365,6 +376,9 @@ static void YMVLCDisplay(void *opaque, void *picture);
                 self.pendingStart = 0;
             }
             if (fabsf(self.rate - 1.0f) > 0.01f) vlc_player_set_rate(self.mediaPlayer, self.rate);
+            // Volume and mute live on the audio output, which is (re)created per input.
+            vlc_audio_set_volume(self.mediaPlayer, (int)lroundf(self.volume * 100));
+            vlc_audio_set_mute(self.mediaPlayer, self.muted);
             if (self.videoSuspended) [self applyVideoSuspension];
             break;
         case YMVLCEventPaused:
@@ -483,6 +497,18 @@ static void YMVLCDisplay(void *opaque, void *picture);
     _rate = rate;
     if (self.mediaPlayer) vlc_player_set_rate(self.mediaPlayer, rate);
 }
+
+- (void)setVolume:(float)volume {
+    _volume = MIN(MAX(volume, 0), 2);
+    if (self.mediaPlayer) vlc_audio_set_volume(self.mediaPlayer, (int)lroundf(_volume * 100));
+}
+
+- (void)setMuted:(BOOL)muted {
+    _muted = muted;
+    if (self.mediaPlayer) vlc_audio_set_mute(self.mediaPlayer, muted);
+}
+
+- (float)maximumVolume { return 2.0f; }
 
 - (void)attachVideoView:(YMLocalVideoView *)view {
     [self.views addObject:view];

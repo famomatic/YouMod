@@ -29,6 +29,10 @@ typedef NS_ENUM(NSInteger, YMRepeatMode) {
 @property (nonatomic, assign) YMRepeatMode repeatMode;
 @property (nonatomic, assign) BOOL shuffle;
 @property (nonatomic, assign) float rate;
+@property (nonatomic, assign) float volume;   // 1.0 = 100%; up to maximumVolume
+@property (nonatomic, readonly) float maximumVolume;
+@property (nonatomic, assign) BOOL muted;
+@property (nonatomic, assign) BOOL audioOnly; // video decoding off, artwork shown (YouMod's radio button)
 - (void)playItems:(NSArray<YMDownloadItem *> *)items startAtIndex:(NSUInteger)index;
 - (void)play;
 - (void)pause;

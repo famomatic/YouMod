@@ -700,3 +700,6 @@
 "SORT_TITLE" = "제목순";
 "UNSUPPORTED_FORMAT_MESSAGE" = "iOS에서 재생할 수 없는 형식입니다 (%@). 재생 가능한 MP4/M4A로 한 번 변환할까요? 하드웨어 인코더를 사용하며 원본 파일을 대체합니다.";
 "UNSUPPORTED_FORMAT_TITLE" = "지원하지 않는 형식";
+"ZOOMED_TO_FILL" = "화면 채우기";
+"ORIGINAL_SIZE" = "원본 크기";
+"COPY_LINK_AT_TIME" = "현재 시간 링크 복사";

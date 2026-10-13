@@ -38,6 +38,10 @@ typedef NS_ENUM(NSInteger, YMPlaybackRoute) {
 - (void)stop;
 - (void)seekToTime:(NSTimeInterval)time completion:(void (^)(void))completion;
 - (void)setRate:(float)rate;
+// 1.0 = 100%. The VLC route can boost up to 2.0; AVPlayer stops at 1.0.
+- (void)setVolume:(float)volume;
+- (void)setMuted:(BOOL)muted;
+@property (nonatomic, readonly) float maximumVolume;
 - (void)attachVideoView:(YMLocalVideoView *)view;
 // In the background without Picture in Picture only the audio keeps playing.
 - (void)setVideoSuspended:(BOOL)suspended;
