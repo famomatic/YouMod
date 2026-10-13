@@ -1,4 +1,6 @@
 #import "Headers.h"
+#import <objc/runtime.h>
+#import <objc/message.h>
 
 // YouTube-X (https://github.com/PoomSmart/YouTube-X)
 static BOOL isProductList(YTICommand *command) {
@@ -213,8 +215,22 @@ static NSMutableArray <YTIItemSectionRenderer *> *filteredArray(NSArray <YTIItem
 }
 %end
 
+// No ads coordinator at all also skipped what one does for an ad-free video: on
+// startPrerollAdBreak YouTube's own YTNoOpAdsPlaybackCoordinator immediately reports
+// the break finished, and -[YTLocalPlaybackController adsPlaybackCoordinator:
+// didFinishBreakWithBreakType:] then activates the content sequence
+// (loadOrActivateContentSequence) and closes the timeline segment. Returning nil
+// left that out, and with it the watch history entry. YouTube uses the NoOp
+// coordinator itself when its player config says so (useNoOpAdsCoordinator), so
+// hand it that one - same ad-free playback, normal content bookkeeping.
 %hook YTLocalPlaybackController
-- (id)createAdsPlaybackCoordinator { return nil; }
+- (id)createAdsPlaybackCoordinator {
+    Class noOp = %c(YTNoOpAdsPlaybackCoordinator);
+    if (![noOp instancesRespondToSelector:@selector(initWithServiceRegistryScope:delegate:)]) return nil;
+    Ivar ivar = class_getInstanceVariable(object_getClass(self), "_serviceRegistryScope");
+    id scope = ivar ? object_getIvar(self, ivar) : nil;
+    return ((id (*)(id, SEL, id, id))objc_msgSend)([noOp alloc], @selector(initWithServiceRegistryScope:delegate:), scope, self);
+}
 %end
 
 %hook MDXSession
