@@ -90,7 +90,26 @@ static const uint64_t kSABRReqPlayerTimeMs    = 4;  // top-level player time
 static const uint64_t kSABRReqUstreamerConfig = 5;  // ustreamer/policy blob; also carries the available-format list
 static const uint64_t kSABRReqPreferredAudio  = 16; // preferred_audio_format_ids — the AUDIO download target
 static const uint64_t kSABRReqPreferredVideo  = 17; // preferred_video_format_ids — the VIDEO download target
-// (#19 streamer_context is kept verbatim via the copy-everything-else path.)
+static const uint64_t kSABRReqStreamerContext = 19; // copied, with playback_cookie/sabr_contexts kept current
+
+// StreamerContext { #3 playback_cookie (bytes), #5 repeated SabrContext { #1 type, #2 value } }.
+static const uint64_t kSABRCtxPlaybackCookie = 3;
+static const uint64_t kSABRCtxSabrContexts   = 5;
+static const uint64_t kSABRCtxEntryType      = 1;
+static const uint64_t kSABRCtxEntryValue     = 2;
+
+// NextRequestPolicy (UMP part 35): #4 backoff_time_ms, #7 playback_cookie (message).
+static const uint64_t kSABRPolicyBackoffMs      = 4;
+static const uint64_t kSABRPolicyPlaybackCookie = 7;
+
+// SabrContextUpdate (part 57): #1 type, #3 value, #4 send_by_default.
+static const uint64_t kSABRCtxUpdateType          = 1;
+static const uint64_t kSABRCtxUpdateValue         = 3;
+static const uint64_t kSABRCtxUpdateSendByDefault = 4;
+
+// SabrError (part 44): #1 type (string), #2 code.
+static const uint64_t kSABRErrorType = 1;
+static const uint64_t kSABRErrorCode = 2;
 
 static const uint64_t kSABRAbrStatePlayerTimeMs = 28; // ClientAbrState.player_time_ms
 
@@ -141,7 +160,9 @@ static const uint64_t kSABRInitEndSegment   = 4; // last segment index
 static const int kSABRMaxRequests = 400;
 // Bail after this many CONSECUTIVE rounds with no new media (a policy-only round is
 // normal; a run of them means the download is genuinely stuck).
-static const int kSABRMaxEmptyRounds = 4;
+static const int kSABRMaxEmptyRounds = 8;
+// Upper bound on a server-requested backoff, so a bogus value can't hang a download.
+static const uint64_t kSABRMaxBackoffMs = 10000;
 
 #pragma mark - Protobuf helpers (base-128 varint; distinct from the UMP varint above)
 
@@ -455,9 +476,48 @@ static NSTimeInterval SABRExpireFromURL(NSURL *url) {
 //   #1 / #5 / #19 kept byte-for-byte (auth/session/config stay intact).
 // `bufferedRanges` / `selectedFormats` are pre-encoded FormatId/BufferedRange
 // submessages (nil/empty on the first request).
+// Server-driven session state the reference client carries from one request to the
+// next. The captured request's own playback cookie describes the format the app was
+// playing; replaying it unchanged while asking for a different format (e.g. 2K AV1)
+// is what left such downloads stalled.
+@interface YMSABRSession : NSObject
+@property (nonatomic, strong) NSData *playbackCookie;                            // from NextRequestPolicy
+@property (nonatomic, strong) NSMutableDictionary<NSNumber *, NSData *> *contexts; // SABR_CONTEXT_UPDATE type -> value
+@property (nonatomic, assign) uint64_t backoffMs;                                 // from the last NextRequestPolicy
+@property (nonatomic, copy) NSString *error;                                      // SABR_ERROR
+@end
+@implementation YMSABRSession
+@end
+
+// The captured StreamerContext with the session's current playback cookie and SABR
+// contexts swapped in; everything else (client info, PoToken, ...) stays verbatim.
+static NSData *SABRRewriteStreamerContext(NSData *ctx, YMSABRSession *session) {
+    if (!session.playbackCookie && session.contexts.count == 0) return ctx;
+    const uint8_t *b = (const uint8_t *)ctx.bytes;
+    NSMutableData *out = [NSMutableData data];
+    BOOL ok = SABRIterateTopLevel(ctx, ^BOOL(uint64_t f, int w, NSUInteger fs, NSUInteger fe, NSUInteger ps, NSUInteger pl) {
+        if (f == kSABRCtxPlaybackCookie && session.playbackCookie) return YES;
+        if (f == kSABRCtxSabrContexts && w == kProtoWireLengthDelimited) {
+            uint64_t type = 0;
+            if (SABRReadVarintField([ctx subdataWithRange:NSMakeRange(ps, pl)], kSABRCtxEntryType, &type) && session.contexts[@(type)]) return YES;
+        }
+        [out appendBytes:b + fs length:fe - fs];
+        return YES;
+    });
+    if (!ok) return ctx;
+    if (session.playbackCookie) SABRAppendBytesField(out, kSABRCtxPlaybackCookie, session.playbackCookie);
+    for (NSNumber *type in session.contexts) {
+        NSMutableData *entry = [NSMutableData data];
+        SABRAppendVarintField(entry, kSABRCtxEntryType, type.unsignedLongLongValue);
+        SABRAppendBytesField(entry, kSABRCtxEntryValue, session.contexts[type]);
+        SABRAppendBytesField(out, kSABRCtxSabrContexts, entry);
+    }
+    return out;
+}
+
 static NSData *SABRBuildRequestBody(NSData *orig, YMSABRFormat *videoFmt, YMSABRFormat *audioFmt,
                                     uint64_t playerTimeMs, NSArray<NSData *> *bufferedRanges,
-                                    NSArray<NSData *> *selectedFormats) {
+                                    NSArray<NSData *> *selectedFormats, YMSABRSession *session) {
     const uint8_t *b = (const uint8_t *)orig.bytes;
     NSMutableData *out = [NSMutableData data];
     BOOL parsed = SABRIterateTopLevel(orig, ^BOOL(uint64_t field, int wire, NSUInteger fs, NSUInteger fe, NSUInteger ps, NSUInteger pl) {
@@ -469,6 +529,10 @@ static NSData *SABRBuildRequestBody(NSData *orig, YMSABRFormat *videoFmt, YMSABR
             // Override player_time_ms (#28) inside the ClientAbrState, keep the rest.
             NSData *state = SABRSetVarintField([orig subdataWithRange:NSMakeRange(ps, pl)], kSABRAbrStatePlayerTimeMs, playerTimeMs);
             SABRAppendBytesField(out, kSABRReqClientAbrState, state);
+            return YES;
+        }
+        if (field == kSABRReqStreamerContext && wire == 2) {
+            SABRAppendBytesField(out, kSABRReqStreamerContext, SABRRewriteStreamerContext([orig subdataWithRange:NSMakeRange(ps, pl)], session));
             return YES;
         }
         [out appendBytes:b + fs length:fe - fs];
@@ -509,8 +573,49 @@ static void SABRPostOnce(NSURL *url, NSData *body, void (^completion)(NSData *da
 // Writes init segments (once) + media segments, updates each track's lastSequence,
 // downloaded duration, per-round window, and FORMAT_INIT markers, and reports any
 // redirect URL / reload flag via out-params.
+
+static void SABRIngestPolicy(const uint8_t *payload, NSUInteger size, YMSABRSession *session) {
+    NSData *msg = [NSData dataWithBytes:payload length:size];
+    const uint8_t *b = (const uint8_t *)msg.bytes;
+    session.backoffMs = 0;
+    SABRIterateTopLevel(msg, ^BOOL(uint64_t f, int w, NSUInteger fs, NSUInteger fe, NSUInteger ps, NSUInteger pl) {
+        if (f == kSABRPolicyBackoffMs && w == kProtoWireVarint) {
+            uint64_t v = 0; if (SABRReadProtoVarint(b, msg.length, ps, &v)) session.backoffMs = MIN(v, kSABRMaxBackoffMs);
+        } else if (f == kSABRPolicyPlaybackCookie && w == kProtoWireLengthDelimited) {
+            session.playbackCookie = [msg subdataWithRange:NSMakeRange(ps, pl)];
+        }
+        return YES;
+    });
+}
+
+static void SABRIngestContextUpdate(const uint8_t *payload, NSUInteger size, YMSABRSession *session) {
+    NSData *msg = [NSData dataWithBytes:payload length:size];
+    const uint8_t *b = (const uint8_t *)msg.bytes;
+    __block uint64_t type = 0; __block BOOL hasType = NO, sendByDefault = NO; __block NSData *value = nil;
+    SABRIterateTopLevel(msg, ^BOOL(uint64_t f, int w, NSUInteger fs, NSUInteger fe, NSUInteger ps, NSUInteger pl) {
+        uint64_t v = 0;
+        if (f == kSABRCtxUpdateType && w == kProtoWireVarint && SABRReadProtoVarint(b, msg.length, ps, &v)) { type = v; hasType = YES; }
+        else if (f == kSABRCtxUpdateValue && w == kProtoWireLengthDelimited) value = [msg subdataWithRange:NSMakeRange(ps, pl)];
+        else if (f == kSABRCtxUpdateSendByDefault && w == kProtoWireVarint && SABRReadProtoVarint(b, msg.length, ps, &v)) sendByDefault = v != 0;
+        return YES;
+    });
+    if (hasType && value && sendByDefault) session.contexts[@(type)] = value;
+}
+
+static void SABRIngestError(const uint8_t *payload, NSUInteger size, YMSABRSession *session) {
+    NSData *msg = [NSData dataWithBytes:payload length:size];
+    const uint8_t *b = (const uint8_t *)msg.bytes;
+    __block NSString *type = nil; __block uint64_t code = 0;
+    SABRIterateTopLevel(msg, ^BOOL(uint64_t f, int w, NSUInteger fs, NSUInteger fe, NSUInteger ps, NSUInteger pl) {
+        if (f == kSABRErrorType && w == kProtoWireLengthDelimited) type = [[NSString alloc] initWithData:[msg subdataWithRange:NSMakeRange(ps, pl)] encoding:NSUTF8StringEncoding];
+        else if (f == kSABRErrorCode && w == kProtoWireVarint) SABRReadProtoVarint(b, msg.length, ps, &code);
+        return YES;
+    });
+    session.error = [NSString stringWithFormat:@"server error: %@ (%llu)", type ?: @"unknown", code];
+}
+
 static void SABRIngestResponse(NSData *data, NSDictionary<NSNumber *, YMSABRTrack *> *tracks,
-                               NSString **redirectURL, BOOL *reload) {
+                               NSString **redirectURL, BOOL *reload, YMSABRSession *session) {
     NSMutableDictionary<NSNumber *, YMSABRMediaHeader *> *headers = [NSMutableDictionary dictionary]; // headerId -> header
     __block NSString *redirect = nil; __block BOOL sawReload = NO;
 
@@ -565,6 +670,12 @@ static void SABRIngestResponse(NSData *data, NSDictionary<NSNumber *, YMSABRTrac
             });
         } else if (type == SABRPartReload) {
             sawReload = YES;
+        } else if (type == SABRPartNextRequestPolicy) {
+            SABRIngestPolicy(payload, size, session);
+        } else if (type == SABRPartContextUpdate) {
+            SABRIngestContextUpdate(payload, size, session);
+        } else if (type == SABRPartError) {
+            SABRIngestError(payload, size, session);
         }
     });
 
@@ -630,6 +741,8 @@ static void SABRRunDownload(uint64_t videoItag, uint64_t audioItag,
         __block int emptyRounds = 0;   // consecutive rounds with no new media (SABR may send policy-only rounds)
         __block BOOL finished = NO;
         __block NSURL *currentURL = gCapURL;
+        YMSABRSession *session = [YMSABRSession new];
+        session.contexts = [NSMutableDictionary dictionary];
         // Recursive loop across async network callbacks: hold the block in a heap box
         // and recurse through it (a direct capture is an ARC retain-cycle error);
         // `finish` empties the box to free the loop.
@@ -672,7 +785,7 @@ static void SABRRunDownload(uint64_t videoItag, uint64_t audioItag,
             // present, else audio). The playhead stays at/ahead of each track's buffered
             // edge and pulls the remaining segments forward.
             uint64_t driveTime = mainTrack.downloadedMs;
-            NSData *body = SABRBuildRequestBody(gCapPlainBody, videoFmt, audioFmt, driveTime, buffered, selected);
+            NSData *body = SABRBuildRequestBody(gCapPlainBody, videoFmt, audioFmt, driveTime, buffered, selected, session);
             if (!body) { finish(@"failed to build request body"); return; }
 
             SABRPostOnce(currentURL, body, ^(NSData *data, NSHTTPURLResponse *http, NSError *err) {
@@ -683,8 +796,9 @@ static void SABRRunDownload(uint64_t videoItag, uint64_t audioItag,
                     NSMutableDictionary<NSNumber *, NSNumber *> *beforeSeq = [NSMutableDictionary dictionary];
                     for (YMSABRTrack *t in trackList) beforeSeq[@(t.format.itag)] = @(t.lastSequence);
                     NSString *redirect = nil; BOOL reload = NO;
-                    SABRIngestResponse(data, tracks, &redirect, &reload);
+                    SABRIngestResponse(data, tracks, &redirect, &reload, session);
 
+                    if (session.error) { finish(session.error); return; }
                     if (reload) { finish(@"session expired (RELOAD) — replay the video and try again"); return; }
                     if (redirect.length) currentURL = [NSURL URLWithString:redirect] ?: currentURL;
 
@@ -705,9 +819,23 @@ static void SABRRunDownload(uint64_t videoItag, uint64_t audioItag,
                     BOOL advanced = NO;
                     for (YMSABRTrack *t in trackList)
                         if (!t.complete && t.lastSequence > beforeSeq[@(t.format.itag)].unsignedLongLongValue) advanced = YES;
-                    emptyRounds = advanced ? 0 : (emptyRounds + 1);
-                    if (emptyRounds >= kSABRMaxEmptyRounds) { finish(@"stalled — no forward progress for several rounds"); return; }
-                    callRound();
+                    // A round the server asked us to back off from isn't a stall - honour
+                    // the wait instead of hammering it with requests that come back empty.
+                    uint64_t backoff = session.backoffMs;
+                    if (!advanced && backoff == 0) emptyRounds++;
+                    else if (advanced) emptyRounds = 0;
+                    if (emptyRounds >= kSABRMaxEmptyRounds) {
+                        NSMutableArray *state = [NSMutableArray array];
+                        for (YMSABRTrack *t in trackList)
+                            [state addObject:[NSString stringWithFormat:@"itag %llu seg %llu/%llu %llus/%llus", t.format.itag, t.lastSequence, t.endSegment, t.downloadedMs / 1000, t.endTimeMs / 1000]];
+                        finish([NSString stringWithFormat:@"stalled — no forward progress (%@)", [state componentsJoinedByString:@", "]]);
+                        return;
+                    }
+                    if (backoff > 0) {
+                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(backoff * NSEC_PER_MSEC)), SABRQueue(), ^{ callRound(); });
+                    } else {
+                        callRound();
+                    }
                 });
             });
         };

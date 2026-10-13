@@ -299,19 +299,28 @@ static YTQTMButton *YMCreateOverlayButton(YTMainAppControlsOverlayView *overlay,
 static const NSInteger YMSpeedStepperMinusTag = 9906;
 static const NSInteger YMSpeedStepperPlusTag = 9907;
 static const NSInteger YMSpeedStepperTextTag = 9908;
-static const CGFloat YMSpeedStepperButtonSize = 22.0; // smaller than the main 30pt overlay buttons
-static const CGFloat YMSpeedStepperTextWidth = 50.0;
-static const CGFloat YMSpeedStepperTextHeight = 16.0;
+static const CGFloat YMSpeedStepperButtonSize = 28.0; // a little smaller than the main 30pt overlay buttons
+static const CGFloat YMSpeedStepperTextMinWidth = 52.0;
+static const CGFloat YMSpeedStepperTextHeight = 24.0;
 static const CGFloat YMSpeedStepperGapBelowTransport = 4.0;
 static const float YMSpeedStepperStep = 0.05;
 
+// Same translucent dark backdrop as the overlay buttons at the top of the player,
+// so the stepper stays readable over bright video.
+static UIColor *YMSpeedStepperBackgroundColor(void) {
+    return [UIColor colorWithWhite:0.0 alpha:0.45];
+}
+
 static UIButton *YMCreateSpeedStepperButton(YTMainAppControlsOverlayView *overlay, NSInteger tag, NSString *symbolName, SEL action) {
-    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightBold];
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:13 weight:UIImageSymbolWeightBold];
     UIImage *icon = [[UIImage systemImageNamed:symbolName withConfiguration:config] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
     button.tag = tag;
     [button setImage:icon forState:UIControlStateNormal];
     button.tintColor = [UIColor whiteColor];
+    button.backgroundColor = YMSpeedStepperBackgroundColor();
+    button.layer.cornerRadius = YMSpeedStepperButtonSize / 2.0;
+    button.clipsToBounds = YES;
     button.exclusiveTouch = YES;
     [button addTarget:overlay action:action forControlEvents:UIControlEventTouchUpInside];
     [overlay addSubview:button];
@@ -359,14 +368,17 @@ static void YMLayoutSpeedStepper(YTMainAppControlsOverlayView *overlay, BOOL sho
     if (nextView.window) nextFrame = [nextView convertRect:nextView.bounds toView:overlay];
     if (playView.window) playPauseFrame = [playView convertRect:playView.bounds toView:overlay];
 
-    if (!minusBtn) minusBtn = YMCreateSpeedStepperButton(overlay, YMSpeedStepperMinusTag, @"minus.circle.fill", @selector(ymSpeedStepperMinusTapped:));
-    if (!plusBtn) plusBtn = YMCreateSpeedStepperButton(overlay, YMSpeedStepperPlusTag, @"plus.circle.fill", @selector(ymSpeedStepperPlusTapped:));
+    if (!minusBtn) minusBtn = YMCreateSpeedStepperButton(overlay, YMSpeedStepperMinusTag, @"minus", @selector(ymSpeedStepperMinusTapped:));
+    if (!plusBtn) plusBtn = YMCreateSpeedStepperButton(overlay, YMSpeedStepperPlusTag, @"plus", @selector(ymSpeedStepperPlusTapped:));
     if (!textLabel) {
         textLabel = [%c(YTLabel) new];
         textLabel.tag = YMSpeedStepperTextTag;
         textLabel.textAlignment = NSTextAlignmentCenter;
         textLabel.textColor = [UIColor whiteColor];
-        textLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
+        textLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
+        textLabel.backgroundColor = YMSpeedStepperBackgroundColor();
+        textLabel.layer.cornerRadius = YMSpeedStepperTextHeight / 2.0;
+        textLabel.clipsToBounds = YES;
         textLabel.userInteractionEnabled = YES;
         [textLabel addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:overlay action:@selector(ymSpeedStepperTextTapped:)]];
         [overlay addSubview:textLabel];
@@ -383,9 +395,11 @@ static void YMLayoutSpeedStepper(YTMainAppControlsOverlayView *overlay, BOOL sho
     plusBtn.frame = CGRectMake(CGRectGetMidX(nextFrame) - YMSpeedStepperButtonSize / 2.0,
                               CGRectGetMaxY(nextFrame) + YMSpeedStepperGapBelowTransport,
                               YMSpeedStepperButtonSize, YMSpeedStepperButtonSize);
-    textLabel.frame = CGRectMake(CGRectGetMidX(playPauseFrame) - YMSpeedStepperTextWidth / 2.0,
-                                 CGRectGetMaxY(playPauseFrame) + YMSpeedStepperGapBelowTransport,
-                                 YMSpeedStepperTextWidth, YMSpeedStepperTextHeight);
+    // Pill sized to the readout, vertically centred on the -/+ buttons.
+    CGFloat textWidth = MAX(YMSpeedStepperTextMinWidth, ceil([textLabel sizeThatFits:CGSizeMake(CGFLOAT_MAX, YMSpeedStepperTextHeight)].width) + 16.0);
+    textLabel.frame = CGRectMake(CGRectGetMidX(playPauseFrame) - textWidth / 2.0,
+                                 CGRectGetMaxY(playPauseFrame) + YMSpeedStepperGapBelowTransport + (YMSpeedStepperButtonSize - YMSpeedStepperTextHeight) / 2.0,
+                                 textWidth, YMSpeedStepperTextHeight);
     [overlay bringSubviewToFront:minusBtn];
     [overlay bringSubviewToFront:plusBtn];
     [overlay bringSubviewToFront:textLabel];
