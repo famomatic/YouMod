@@ -112,6 +112,13 @@ static const uint64_t kSABRErrorType = 1;
 static const uint64_t kSABRErrorCode = 2;
 
 static const uint64_t kSABRAbrStatePlayerTimeMs = 28; // ClientAbrState.player_time_ms
+// ClientAbrState.enabled_track_types_bitfield: 0 = audio + video, 1 = audio only.
+// The captured state carries whatever the player was doing - with its video track
+// off (Radio Mode, background playback) it says audio only, and the server then
+// refuses a video format with sabr.no_video_selected.
+static const uint64_t kSABRAbrStateEnabledTracks = 40;
+static const uint64_t kSABRTracksAudioAndVideo = 0;
+static const uint64_t kSABRTracksAudioOnly = 1;
 
 // #5 -> #1 -> #6 repeated FormatId = the full available-format list (source of lastModified + xtags).
 static const uint64_t kSABRAvailInner = 1; // #5.#1
@@ -473,6 +480,7 @@ static NSTimeInterval SABRExpireFromURL(NSURL *url) {
 //   #2  = the "initialized" echo list (empty until formats initialize).
 //   #3  = buffered ranges we already hold (empty = stream from start).
 //   #1.#28 + #4 = player_time_ms (advances the stream).
+//   #1.#40 = enabled track types, set to what this download needs.
 //   #1 / #5 / #19 kept byte-for-byte (auth/session/config stay intact).
 // `bufferedRanges` / `selectedFormats` are pre-encoded FormatId/BufferedRange
 // submessages (nil/empty on the first request).
@@ -526,8 +534,10 @@ static NSData *SABRBuildRequestBody(NSData *orig, YMSABRFormat *videoFmt, YMSABR
             field == kSABRReqPreferredAudio || field == kSABRReqPreferredVideo ||
             field == kSABRReqPlayerTimeMs) return YES;
         if (field == kSABRReqClientAbrState && wire == 2) {
-            // Override player_time_ms (#28) inside the ClientAbrState, keep the rest.
+            // Override player_time_ms (#28) and the enabled tracks (#40) inside the
+            // ClientAbrState, keep the rest.
             NSData *state = SABRSetVarintField([orig subdataWithRange:NSMakeRange(ps, pl)], kSABRAbrStatePlayerTimeMs, playerTimeMs);
+            state = SABRSetVarintField(state, kSABRAbrStateEnabledTracks, videoFmt ? kSABRTracksAudioAndVideo : kSABRTracksAudioOnly);
             SABRAppendBytesField(out, kSABRReqClientAbrState, state);
             return YES;
         }
