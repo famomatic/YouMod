@@ -357,7 +357,7 @@
 "SPEED_STYLE_BUTTON" = "Button";
 "RADIO_MODE_HEADER" = "Radio Mode";
 "RADIO_MODE" = "Enable Radio Mode";
-"RADIO_MODE_DESC" = "Adds a button under the like/share/download row to listen audio-only, like YouTube Music. Hides the video, shows title/repeat/shuffle (when in a playlist)/volume, and keeps Picture in Picture from popping up.";
+"RADIO_MODE_DESC" = "Adds a headphones button to the player (and, where available, under the like/share/download row) to listen audio-only, like YouTube Music. Hides the video, shows title/repeat/shuffle (when in a playlist)/volume, and keeps Picture in Picture from popping up.";
 "RADIO_MODE_ENTER" = "Listen in Radio Mode";
 "RADIO_MODE_EXIT" = "Back to video";
 "CHOOSE_FROM_ORIGINAL" = "Use original speed menu";

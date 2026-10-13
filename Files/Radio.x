@@ -38,6 +38,7 @@ static NSInteger const YMRadioAuthorTag = 9924;
 static NSInteger const YMRadioShuffleTag = 9925;
 static NSInteger const YMRadioRepeatTag = 9926;
 static NSInteger const YMRadioVolumeTag = 9927;
+static NSInteger const YMRadioExitTag = 9928;
 
 #pragma mark - Finding real native views by accessibility identifier
 
@@ -70,6 +71,9 @@ static void YMToggleRadioMode(void) {
     YTMainAppVideoPlayerOverlayView *ovview = [ovcon videoPlayerOverlayView];
     YTMainAppControlsOverlayView *conview = [ovview controlsOverlayView];
     [conview setNeedsLayout];
+    // Keep the action-bar entry button's title in sync where that button exists.
+    UIButton *entry = (UIButton *)[YMKeyWindowForSearch() viewWithTag:YMRadioEntryButtonTag];
+    [entry setTitle:LOC(gYMRadioModeActive ? @"RADIO_MODE_EXIT" : @"RADIO_MODE_ENTER") forState:UIControlStateNormal];
 }
 
 #pragma mark - The entry button, placed under the action bar (like/share/download row)
@@ -206,6 +210,19 @@ static void YMLayoutRadioCover(YTMainAppControlsOverlayView *overlay) {
         volume.tag = YMRadioVolumeTag;
         [cover addSubview:volume];
 
+        // The overlay buttons are hidden under the cover, so it carries its own way back.
+        UIButton *exitBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+        exitBtn.tag = YMRadioExitTag;
+        [exitBtn setImage:[[UIImage systemImageNamed:@"play.rectangle" withConfiguration:btnConfig] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate] forState:UIControlStateNormal];
+        exitBtn.tintColor = [UIColor whiteColor];
+        exitBtn.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.15];
+        exitBtn.layer.cornerRadius = 18;
+        exitBtn.accessibilityLabel = LOC(@"RADIO_MODE_EXIT");
+        [exitBtn addAction:[UIAction actionWithHandler:^(UIAction *action) {
+            YMToggleRadioMode();
+        }] forControlEvents:UIControlEventTouchUpInside];
+        [cover addSubview:exitBtn];
+
         [overlay insertSubview:cover atIndex:0];
     }
 
@@ -242,6 +259,8 @@ static void YMLayoutRadioCover(YTMainAppControlsOverlayView *overlay) {
         shuffle.frame = CGRectMake(centerX - 90, controlsY, 36, 36);
     }
     volume.frame = CGRectMake(20, height - 28, width - 40, 20);
+    UIButton *exitBtn = (UIButton *)[cover viewWithTag:YMRadioExitTag];
+    exitBtn.frame = CGRectMake(width - 52, 12, 36, 36);
 }
 
 %hook YTMainAppControlsOverlayView
@@ -259,3 +278,27 @@ static void YMLayoutRadioCover(YTMainAppControlsOverlayView *overlay) {
     return %orig;
 }
 %end
+
+#pragma mark - Player overlay button (the reliable way in)
+
+// The action-bar entry button above depends on a server-delivered layout container
+// that isn't always there, so Radio Mode is also a regular player overlay button
+// (manageable in Manage overlay buttons like the others).
+%ctor {
+    YMRegisterDefaults();
+    %init;
+    YMOverlayButtonSpec *radio = [[YMOverlayButtonSpec alloc] init];
+    radio.identifier = @"radio.video";
+    radio.symbolName = @"headphones";
+    radio.settingsSymbolName = @"headphones";
+    radio.displayName = LOC(@"RADIO_MODE_HEADER");
+    radio.tintColor = [UIColor whiteColor];
+    radio.sortOrder = 850;
+    radio.isVisible = ^BOOL(YTPlayerViewController *player) {
+        return IS_ENABLED(RadioMode) && YMIsOverlayButtonEnabled(@"radio.video");
+    };
+    radio.onTap = ^(YTPlayerViewController *player, YTQTMButton *button) {
+        YMToggleRadioMode();
+    };
+    YMRegisterOverlayButton(radio);
+}
