@@ -657,7 +657,7 @@
 "DOWNLOADS_TAB" = "다운로드";
 "DOWNLOADS_IN_PROGRESS" = "진행 중";
 "DOWNLOADS_DONE" = "다운로드됨";
-"DOWNLOADS_EMPTY" = "아직 다운로드한 항목이 없습니다.\n다운로드한 영상과 오디오가 여기에 표시됩니다.";
+"DOWNLOADS_EMPTY" = "다운로드한 영상과 오디오가 여기에 표시됩니다.";
 "DOWNLOADS_STORAGE" = "파일 %lu개 · %@";
 "DELETE_DOWNLOAD" = "이 다운로드를 삭제할까요?";
 "DELETE" = "삭제";
@@ -668,3 +668,35 @@
 "SAVE_TO_PHOTOS_ACTION" = "사진 앱에 저장";
 "OPEN_VIDEO" = "영상 열기";
 "COPY_LINK" = "링크 복사";
+
+// Downloads player / list
+"CONVERSION_FAILED" = "변환 실패";
+"CONVERT" = "변환";
+"DELETE_COUNT" = "삭제 (%lu)";
+"DELETE_DOWNLOADS_CONFIRM" = "다운로드 %lu개를 삭제할까요?";
+"DESELECT_ALL" = "전체 해제";
+"DOWNLOADS_EMPTY_TITLE" = "다운로드한 항목이 없습니다";
+"DOWNLOADS_FILTER_ALL" = "전체";
+"DOWNLOADS_FILTER_AUDIO" = "오디오";
+"DOWNLOADS_FILTER_VIDEOS" = "동영상";
+"DOWNLOADS_FREE_SPACE" = "%@ 남음";
+"DOWNLOADS_NO_RESULTS" = "검색 결과 없음";
+"FILE_NOT_FOUND" = "파일이 더 이상 존재하지 않습니다";
+"JUST_NOW" = "방금 전";
+"OPEN_IN" = "다른 앱에서 열기";
+"PLAYBACK_FAILED" = "이 파일을 재생할 수 없습니다";
+"PLAYER_REPEAT" = "반복";
+"PLAYER_REPEAT_ALL" = "전체 반복";
+"PLAYER_REPEAT_ONE" = "한 곡 반복";
+"PLAYER_SHUFFLE" = "셔플";
+"SEARCH_DOWNLOADS" = "다운로드 검색";
+"SELECT" = "선택";
+"SELECT_ALL" = "전체 선택";
+"SORT" = "정렬";
+"SORT_DURATION" = "긴 영상순";
+"SORT_NEWEST" = "최신순";
+"SORT_OLDEST" = "오래된순";
+"SORT_SIZE" = "큰 파일순";
+"SORT_TITLE" = "제목순";
+"UNSUPPORTED_FORMAT_MESSAGE" = "iOS에서 재생할 수 없는 형식입니다 (%@). 재생 가능한 MP4/M4A로 한 번 변환할까요? 하드웨어 인코더를 사용하며 원본 파일을 대체합니다.";
+"UNSUPPORTED_FORMAT_TITLE" = "지원하지 않는 형식";

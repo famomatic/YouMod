@@ -657,7 +657,7 @@
 "DOWNLOADS_TAB" = "Downloads";
 "DOWNLOADS_IN_PROGRESS" = "In progress";
 "DOWNLOADS_DONE" = "Downloaded";
-"DOWNLOADS_EMPTY" = "No downloads yet.\nDownloaded videos and audio appear here.";
+"DOWNLOADS_EMPTY" = "Downloaded videos and audio appear here.";
 "DOWNLOADS_STORAGE" = "%lu files · %@";
 "DELETE_DOWNLOAD" = "Delete this download?";
 "DELETE" = "Delete";
@@ -668,3 +668,35 @@
 "SAVE_TO_PHOTOS_ACTION" = "Save to Photos";
 "OPEN_VIDEO" = "Open video";
 "COPY_LINK" = "Copy link";
+
+// Downloads player / list
+"CONVERSION_FAILED" = "Conversion failed";
+"CONVERT" = "Convert";
+"DELETE_COUNT" = "Delete (%lu)";
+"DELETE_DOWNLOADS_CONFIRM" = "Delete %lu downloads?";
+"DESELECT_ALL" = "Deselect All";
+"DOWNLOADS_EMPTY_TITLE" = "No downloads yet";
+"DOWNLOADS_FILTER_ALL" = "All";
+"DOWNLOADS_FILTER_AUDIO" = "Audio";
+"DOWNLOADS_FILTER_VIDEOS" = "Videos";
+"DOWNLOADS_FREE_SPACE" = "%@ free";
+"DOWNLOADS_NO_RESULTS" = "No results";
+"FILE_NOT_FOUND" = "The file no longer exists";
+"JUST_NOW" = "Just now";
+"OPEN_IN" = "Open in Another App";
+"PLAYBACK_FAILED" = "This file can't be played";
+"PLAYER_REPEAT" = "Repeat";
+"PLAYER_REPEAT_ALL" = "Repeat All";
+"PLAYER_REPEAT_ONE" = "Repeat One";
+"PLAYER_SHUFFLE" = "Shuffle";
+"SEARCH_DOWNLOADS" = "Search downloads";
+"SELECT" = "Select";
+"SELECT_ALL" = "Select All";
+"SORT" = "Sort";
+"SORT_DURATION" = "Longest";
+"SORT_NEWEST" = "Newest";
+"SORT_OLDEST" = "Oldest";
+"SORT_SIZE" = "Largest";
+"SORT_TITLE" = "Title";
+"UNSUPPORTED_FORMAT_MESSAGE" = "iOS can't play this file (%@). Convert it once to a playable MP4/M4A? This uses the hardware encoder and replaces the original.";
+"UNSUPPORTED_FORMAT_TITLE" = "Unsupported Format";

@@ -30,4 +30,10 @@ extern NSString *const YMDownloadLibraryDidChangeNotification;
 // Records a finished download; the thumbnail (if any) is fetched in the background.
 - (YMDownloadItem *)addFileURL:(NSURL *)fileURL videoID:(NSString *)videoID title:(NSString *)title author:(NSString *)author formatSummary:(NSString *)formatSummary isVideo:(BOOL)isVideo durationMs:(unsigned long long)durationMs thumbnailURL:(NSURL *)thumbnailURL;
 - (void)removeItem:(YMDownloadItem *)item; // deletes the file and its thumbnail
+// Swaps the item's file for `newURL` (moved into the downloads folder, the old file
+// is deleted) - used after converting a file iOS can't play.
+- (BOOL)replaceFileOfItem:(YMDownloadItem *)item withURL:(NSURL *)newURL formatSummary:(NSString *)formatSummary;
+// Where playback of an item was left (0 = from the start / finished).
+- (NSTimeInterval)resumePositionForItem:(YMDownloadItem *)item;
+- (void)setResumePosition:(NSTimeInterval)position forItem:(YMDownloadItem *)item;
 @end

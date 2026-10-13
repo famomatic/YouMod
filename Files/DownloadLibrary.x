@@ -184,8 +184,53 @@ static NSString *const YMLibraryThumbnailFolder = @".thumbnails";
     return item;
 }
 
+- (BOOL)replaceFileOfItem:(YMDownloadItem *)item withURL:(NSURL *)newURL formatSummary:(NSString *)formatSummary {
+    if (!item || !newURL) return NO;
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSURL *directory = [YMDownloadLibrary downloadsDirectoryURL];
+    NSString *base = item.fileName.stringByDeletingPathExtension.lastPathComponent ?: NSUUID.UUID.UUIDString;
+    NSString *extension = newURL.pathExtension.length ? newURL.pathExtension : @"mp4";
+    NSURL *target = [directory URLByAppendingPathComponent:[base stringByAppendingPathExtension:extension]];
+    NSUInteger index = 2;
+    while ([fm fileExistsAtPath:target.path] && ![target.path isEqualToString:item.fileURL.path]) {
+        target = [directory URLByAppendingPathComponent:[[NSString stringWithFormat:@"%@ %lu", base, (unsigned long)index++] stringByAppendingPathExtension:extension]];
+    }
+    NSURL *oldURL = item.fileURL;
+    if ([target.path isEqualToString:oldURL.path]) {
+        if (![fm replaceItemAtURL:target withItemAtURL:newURL backupItemName:nil options:0 resultingItemURL:nil error:nil]) return NO;
+    } else {
+        if (![fm moveItemAtURL:newURL toURL:target error:nil]) return NO;
+        if (oldURL) [fm removeItemAtURL:oldURL error:nil];
+    }
+    item.fileName = target.lastPathComponent;
+    item.fileSize = [[fm attributesOfItemAtPath:target.path error:nil] fileSize];
+    if (formatSummary.length) item.formatSummary = formatSummary;
+    [self save];
+    [self notifyChange];
+    return YES;
+}
+
+static NSString *const YMResumePositionsKey = @"YouModDownloadResumePositions";
+
+- (NSTimeInterval)resumePositionForItem:(YMDownloadItem *)item {
+    if (!item.identifier) return 0;
+    NSDictionary *positions = [NSUserDefaults.standardUserDefaults dictionaryForKey:YMResumePositionsKey];
+    return [positions[item.identifier] doubleValue];
+}
+
+- (void)setResumePosition:(NSTimeInterval)position forItem:(YMDownloadItem *)item {
+    if (!item.identifier) return;
+    NSMutableDictionary *positions = [[NSUserDefaults.standardUserDefaults dictionaryForKey:YMResumePositionsKey] mutableCopy] ?: [NSMutableDictionary dictionary];
+    NSNumber *old = positions[item.identifier];
+    if (position < 1) [positions removeObjectForKey:item.identifier];
+    else positions[item.identifier] = @(position);
+    if ((old == nil) == (position < 1) && fabs(old.doubleValue - position) < 0.5) return;
+    [NSUserDefaults.standardUserDefaults setObject:positions forKey:YMResumePositionsKey];
+}
+
 - (void)removeItem:(YMDownloadItem *)item {
     if (!item) return;
+    [self setResumePosition:0 forItem:item];
     if (item.fileURL) [NSFileManager.defaultManager removeItemAtURL:item.fileURL error:nil];
     if (item.thumbnailURL) [NSFileManager.defaultManager removeItemAtURL:item.thumbnailURL error:nil];
     [self.mutableItems removeObject:item];
