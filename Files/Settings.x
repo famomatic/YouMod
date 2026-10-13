@@ -394,6 +394,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             YMToggle(YMLOC(@"DISABLES_ZOOM"), YMLOC(@"DISABLES_ZOOM_DESC"), DisablesFreeZoom),
             YMToggle(YMLOC(@"DISABLES_SNAP_TO_CHAPTER"), YMLOC(@"DISABLES_SNAP_TO_CHAPTER_DESC"), DontSnapToChapter),
             YMToggle(YMLOC(@"DISABLES_ENGAGE_PANEL"), YMLOC(@"DISABLES_ENGAGE_PANEL_DESC"), DisablesEngagementPanel),
+            YMToggle(YMLOC(@"NO_PAUSE_FULLSCREEN_PANEL"), YMLOC(@"NO_PAUSE_FULLSCREEN_PANEL_DESC"), NoPauseOnFullscreenPanel),
     ];
     YMRegisterSettingsGroup(YMLOC(@"PLAYER"), playerItems);
     YTSettingsSectionItem *playergroup = [YTSettingsSectionItemClass itemWithTitle:YMLOC(@"PLAYER") accessibilityIdentifier:nil detailTextBlock:nil selectBlock:^BOOL (YTSettingsCell *cell, NSUInteger arg1) {
@@ -694,6 +695,7 @@ void YMRegisterDefaults(void) {
             DownloadManager: @YES,
             UseFFmpeg: @YES,
             DownloadEmbedMetadata: @YES,
+            NoPauseOnFullscreenPanel: @YES,
             PostDownloadAction: @(PostDownloadActionKeep), // Photos only when asked for
             SBButtonKey: @YES,
             DisableHints: @YES,

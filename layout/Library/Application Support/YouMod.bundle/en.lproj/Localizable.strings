@@ -703,3 +703,5 @@
 "ZOOMED_TO_FILL" = "Zoomed to fill";
 "ORIGINAL_SIZE" = "Original size";
 "COPY_LINK_AT_TIME" = "Copy Link at Current Time";
+"NO_PAUSE_FULLSCREEN_PANEL" = "Keep playing with full-screen comments";
+"NO_PAUSE_FULLSCREEN_PANEL_DESC" = "Don't pause the video when comments or another panel is expanded to full screen.";

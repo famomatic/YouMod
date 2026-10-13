@@ -703,3 +703,5 @@
 "ZOOMED_TO_FILL" = "화면 채우기";
 "ORIGINAL_SIZE" = "원본 크기";
 "COPY_LINK_AT_TIME" = "현재 시간 링크 복사";
+"NO_PAUSE_FULLSCREEN_PANEL" = "전체화면 댓글창에서 재생 유지";
+"NO_PAUSE_FULLSCREEN_PANEL_DESC" = "댓글 등의 패널을 전체화면으로 펼쳐도 영상을 일시정지하지 않습니다.";

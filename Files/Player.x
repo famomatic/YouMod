@@ -423,6 +423,16 @@ static void YouModAddEndTime(YTPlayerViewController *self, YTSingleVideoControll
 - (BOOL)isAutoplayEnabled { return IS_ENABLED(HideAutoPlayToggle) ? NO : %orig; }
 %end
 
+// Opening comments (or another engagement panel) full screen pauses the video;
+// YouTube already skips that for some Premium users
+// (iosDisablePauseOnFullBleedEpOpenForPremiumUsers). This is the one decision
+// point, -[YTWatchViewController shouldPauseVideoForFullscreenEngagementPanel].
+%hook YTWatchViewController
+- (BOOL)shouldPauseVideoForFullscreenEngagementPanel {
+    return IS_ENABLED(NoPauseOnFullscreenPanel) ? NO : %orig;
+}
+%end
+
 %hook YTColdConfig
 - (BOOL)isLandscapeEngagementPanelEnabled { return IS_ENABLED(DisablesEngagementPanel) ? NO : %orig; }
 - (BOOL)removeNextPaddleForAllVideos { return IS_ENABLED(HideNextAndPrevButtons) ? YES : %orig; }

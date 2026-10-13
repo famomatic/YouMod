@@ -185,6 +185,7 @@ extern void YMRegisterDefaults(void);
 #define HidePaidPromoOverlay @"YouModHidePaidPromoOverlay"
 #define HideWaterMark @"YouModHideWaterMark"
 #define DisablesEngagementPanel @"YouModDisablesEngagementPanel"
+#define NoPauseOnFullscreenPanel @"YouModNoPauseOnFullscreenPanel" // keep playing when comments etc. open full screen
 #define DontSnapToChapter @"YouModDontSnapToChapter"
 #define PauseOnOverlay @"YouModPauseOnOverlay"
 #define GestureControls @"YouModEnableGesturesControls"
