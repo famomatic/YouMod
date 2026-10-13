@@ -1371,6 +1371,15 @@ static NSString *YouModAudioOutputExtension(NSInteger output) {
 // engine (which captures/replays the app's own signed request), then hand the two
 // elementary files to the existing muxer. Additive — the direct/server paths above
 // are untouched.
+// Lets the SABR downloader identify formats the player's own request didn't list.
+static void YouModRegisterSABRFormat(YouModMediaFormat *format) {
+    YTIFormatStream *stream = format.source;
+    if (!stream) return;
+    unsigned long long lastModified = [stream respondsToSelector:@selector(lastModified)] ? ((unsigned long long (*)(id, SEL))objc_msgSend)(stream, @selector(lastModified)) : 0;
+    NSString *xtags = [stream respondsToSelector:@selector(xtags)] ? ((NSString *(*)(id, SEL))objc_msgSend)(stream, @selector(xtags)) : nil;
+    [YMSABR registerFormatItag:format.itag lastModified:lastModified xtags:xtags];
+}
+
 - (void)startSABRVideoDownloadWithVideoFormat:(YouModMediaFormat *)videoFormat audioFormat:(YouModMediaFormat *)audioFormat fileName:(NSString *)fileName presenter:(UIViewController *)presenter {
     self.active = YES;
     self.cancelled = NO;
@@ -1382,6 +1391,8 @@ static NSString *YouModAudioOutputExtension(NSInteger output) {
 
     unsigned long long durationMs = videoFormat.durationMs ?: audioFormat.durationMs;
     __weak typeof(self) weakSelf = self;
+    YouModRegisterSABRFormat(videoFormat);
+    YouModRegisterSABRFormat(audioFormat);
     [YMSABR downloadVideoItag:videoFormat.itag audioItag:audioFormat.itag
         progress:^(float fraction, unsigned long long bytesDownloaded, BOOL isAudio) {
             __strong typeof(weakSelf) self = weakSelf;
@@ -1415,6 +1426,7 @@ static NSString *YouModAudioOutputExtension(NSInteger output) {
 
     NSURL *finalURL = YouModUniqueFileURL(fileName, YouModAudioOutputExtension(self.audioOutput));
     __weak typeof(self) weakSelf = self;
+    YouModRegisterSABRFormat(audioFormat);
     [YMSABR downloadAudioItag:audioFormat.itag
         progress:^(float fraction, unsigned long long bytesDownloaded) {
             __strong typeof(weakSelf) self = weakSelf;

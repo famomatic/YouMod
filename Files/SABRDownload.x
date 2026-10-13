@@ -308,6 +308,26 @@ static YMSABRFormat *SABRResolveFormat(NSData *body, uint64_t itag) {
     return result;
 }
 
+// The captured request lists only the formats the player was considering then (its
+// video track off in Radio Mode / background, or capped by viewport or quality
+// setting - e.g. no 1440p AV1), so a chosen itag can be missing from #5 while
+// the player response still has it. Download.x registers each chosen format's
+// {itag, lastModified, xtags} from the streaming data before starting; that
+// triple is what a FormatId carries anyway. Touched on SABRQueue only.
+static NSMutableDictionary<NSNumber *, YMSABRFormat *> *SABRKnownFormats(void) {
+    static NSMutableDictionary *formats;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ formats = [NSMutableDictionary dictionary]; });
+    return formats;
+}
+
+static YMSABRFormat *SABRResolveFormatOrKnown(NSData *body, uint64_t itag) {
+    YMSABRFormat *fmt = SABRResolveFormat(body, itag);
+    if (fmt.found) return fmt;
+    YMSABRFormat *known = SABRKnownFormats()[@(itag)];
+    return known.found ? known : fmt;
+}
+
 // Encode a FormatId submessage { #1 itag, #2 lastModified, #3 xtags }. xtags is
 // always emitted (empty string if none) — matches YTKACE / the real client.
 static NSData *SABREncodeFormatId(YMSABRFormat *fmt) {
@@ -729,8 +749,8 @@ static void SABRRunDownload(uint64_t videoItag, uint64_t audioItag,
             return;
         }
         BOOL wantVideo = videoItag != 0;
-        YMSABRFormat *videoFmt = wantVideo ? SABRResolveFormat(gCapPlainBody, videoItag) : nil;
-        YMSABRFormat *audioFmt = SABRResolveFormat(gCapPlainBody, audioItag);
+        YMSABRFormat *videoFmt = wantVideo ? SABRResolveFormatOrKnown(gCapPlainBody, videoItag) : nil;
+        YMSABRFormat *audioFmt = SABRResolveFormatOrKnown(gCapPlainBody, audioItag);
         if ((wantVideo && !videoFmt.found) || !audioFmt.found) {
             NSString *videoState = !wantVideo ? @"n/a" : (videoFmt.found ? @"ok" : @"missing");
             dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, nil, [NSString stringWithFormat:@"format not available (video %llu:%@, audio %llu:%@)", videoItag, videoState, audioItag, audioFmt.found?@"ok":@"missing"]); });
@@ -874,6 +894,15 @@ static void SABRRunDownload(uint64_t videoItag, uint64_t audioItag,
     SABRRunDownload(0, (uint64_t)audioItag,
         ^(float f, unsigned long long bytes, BOOL isAudio) { if (progress) dispatch_async(dispatch_get_main_queue(), ^{ progress(f, bytes); }); },
         ^(NSURL *videoURL, NSURL *audioURL, NSString *err) { completion(audioURL, err); });
+}
++ (void)registerFormatItag:(int)itag lastModified:(unsigned long long)lastModified xtags:(NSString *)xtags {
+    if (itag <= 0) return;
+    YMSABRFormat *fmt = [YMSABRFormat new];
+    fmt.itag = (uint64_t)itag;
+    fmt.lastModified = lastModified;
+    fmt.xtags = [xtags dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
+    fmt.found = YES;
+    dispatch_async(SABRQueue(), ^{ SABRKnownFormats()[@(itag)] = fmt; });
 }
 + (void)cancelCurrent {
     dispatch_async(SABRQueue(), ^{ gSABRCancel = YES; }); // loop aborts at its next round

@@ -879,6 +879,9 @@ typedef NS_ENUM(NSInteger, YouModTranslationState) {
 + (void)downloadAudioItag:(int)audioItag
                  progress:(void (^)(float fraction, unsigned long long bytesDownloaded))progress
                completion:(void (^)(NSURL *audioURL, NSString *err))completion;
+// {itag, lastModified, xtags} from the player response, for formats the captured
+// request doesn't list.
++ (void)registerFormatItag:(int)itag lastModified:(unsigned long long)lastModified xtags:(NSString *)xtags;
 + (void)cancelCurrent;
 @end
 
