@@ -328,6 +328,19 @@ static void YMLayoutRadioCover(YTPlayerView *playerView) {
     YMRadioLoadArtwork(cover, player);
 }
 
+// Puts the cover back on top of the video when anything moved it (re-attached
+// rendering view, new container, next video's artwork). Cheap when all is in place.
+static void YMRadioEnsureCover(YTPlayerView *playerView) {
+    if (![playerView isKindOfClass:%c(YTPlayerView)]) return;
+    UIView *container = YMRadioRenderingContainer(playerView);
+    UIView *cover = [container viewWithTag:YMRadioCoverTag];
+    UIImageView *art = [cover viewWithTag:YMRadioTitleTag + 100];
+    YTPlayerViewController *player = YouModDownloadGetCurrentPlayer();
+    BOOL inPlace = cover && container.subviews.lastObject == cover && CGRectEqualToRect(cover.frame, container.bounds) &&
+                   [art.accessibilityIdentifier isEqualToString:player.currentVideoID] && art.image;
+    if (!inPlace) YMLayoutRadioCover(playerView);
+}
+
 // The next video in a queue keeps Radio Mode on; refresh the cover's artwork.
 %hook YTPlayerViewController
 - (void)singleVideo:(id)video currentVideoTimeDidChange:(id)time {
@@ -335,9 +348,7 @@ static void YMLayoutRadioCover(YTPlayerView *playerView) {
     if (!gYMRadioModeActive) return;
     // A new video in the queue starts with YouTube's constraint; drop its video too.
     YMRadioApplyAudioOnly(self);
-    UIView *cover = [YMRadioRenderingContainer((YTPlayerView *)self.playerView) viewWithTag:YMRadioCoverTag];
-    UIView *art = [cover viewWithTag:YMRadioTitleTag + 100];
-    if (cover && ![art.accessibilityIdentifier isEqualToString:self.currentVideoID]) [(UIView *)self.playerView setNeedsLayout];
+    YMRadioEnsureCover((YTPlayerView *)self.playerView);
 }
 %end
 
@@ -345,6 +356,16 @@ static void YMLayoutRadioCover(YTPlayerView *playerView) {
 - (void)layoutSubviews {
     %orig;
     if (gYMRadioModeActive || [YMRadioRenderingContainer(self) viewWithTag:YMRadioCoverTag]) YMLayoutRadioCover(self);
+}
+// Coming back from the mini player YouTube re-attaches its rendering view, which
+// lands on top of the cover without another layout pass of the player view.
+- (void)setRenderingView:(id)view {
+    %orig;
+    if (gYMRadioModeActive) dispatch_async(dispatch_get_main_queue(), ^{ YMRadioEnsureCover(self); });
+}
+- (void)didMoveToWindow {
+    %orig;
+    if (gYMRadioModeActive && self.window) dispatch_async(dispatch_get_main_queue(), ^{ YMRadioEnsureCover(self); });
 }
 %end
 
