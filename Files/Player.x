@@ -1,4 +1,25 @@
 #import "Headers.h"
+#import <objc/runtime.h>
+
+// Set by setActiveSingleVideo: when auto fullscreen should run for the new video.
+static char kYMAutoFullscreenPendingKey;
+
+// Called on playback time ticks: once the video is really playing (a tick at least
+// 0.6 s after it was set active), enter fullscreen from the open watch page. A
+// video that is already fullscreen or sits in the mini player is left alone.
+static void YouModMaybeAutoFullscreen(YTPlayerViewController *player) {
+    NSNumber *since = objc_getAssociatedObject(player, &kYMAutoFullscreenPendingKey);
+    if (!since) return;
+    int layout = player.playerViewLayout;
+    if (layout != 2) {
+        if (layout == 3 || layout == 1) objc_setAssociatedObject(player, &kYMAutoFullscreenPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+    if (NSDate.timeIntervalSinceReferenceDate - since.doubleValue < 0.6) return;
+    objc_setAssociatedObject(player, &kYMAutoFullscreenPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    __weak YTPlayerViewController *weakPlayer = player;
+    dispatch_async(dispatch_get_main_queue(), ^{ [weakPlayer YouModAutoFullscreen]; });
+}
 #import <AVFoundation/AVFoundation.h>
 
 static BOOL isWiFiConnected() {
@@ -546,7 +567,12 @@ static void YouModAddEndTime(YTPlayerViewController *self, YTSingleVideoControll
     if (INTFORVAL(AutoDRCAudioIndex) != 0) [playerviewController YouModAutoDRCAudio];
     if (INTFORVAL(AudioTrack) != 0) [playerviewController performSelector:@selector(YouModAutoAudioTrack) withObject:nil afterDelay:0.1];
     if (YMIsOverlayButtonEnabled(@"mute.video")) [playerviewController YouModAutoMute];
-    if (IS_ENABLED(AutoFullScreen)) [playerviewController performSelector:@selector(YouModAutoFullscreen) withObject:nil afterDelay:0.4];
+    // Auto fullscreen waits for the video to actually play (see the time hook below)
+    // instead of a fixed delay: a fixed 0.4 s landed in the middle of the watch page
+    // opening and the player setting up, and stacking the rotation on top of that
+    // stalled the app.
+    if (IS_ENABLED(AutoFullScreen) && playerviewController.playerViewLayout != 3)
+        objc_setAssociatedObject(playerviewController, &kYMAutoFullscreenPendingKey, @(NSDate.timeIntervalSinceReferenceDate), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (INTFORVAL(CaptionTrack) != 0) [playerviewController performSelector:@selector(YouModAutoCaptions) withObject:nil afterDelay:0.2];
     if (INTFORVAL(AutoSpeedIndex) != 0) [playerviewController YouModSetAutoSpeed];
 }
@@ -1239,6 +1265,7 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
 
 %new
 - (void)YouModAutoFullscreen {
+    if (self.playerViewLayout != 2) return; // only from the open watch page, never from the mini player
     YTWatchController *watchController = [self valueForKey:@"_UIDelegate"];
     [watchController showFullScreen];
 }
@@ -1262,6 +1289,7 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
 - (void)singleVideo:(YTSingleVideoController *)video currentVideoTimeDidChange:(YTSingleVideoTime *)time {
     %orig;
     YouModAddEndTime(self, video, time);
+    YouModMaybeAutoFullscreen(self);
 }
 
 - (void)potentiallyMutatedSingleVideo:(YTSingleVideoController *)video currentVideoTimeDidChange:(YTSingleVideoTime *)time {
