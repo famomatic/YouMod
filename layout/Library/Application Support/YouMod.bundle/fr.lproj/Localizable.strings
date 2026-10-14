@@ -683,3 +683,4 @@
 "GROUP_EARLIER" = "Earlier";
 "MORE_FROM_CHANNEL" = "More from This Channel";
 "SABR_FORMAT_SWITCHED" = "%@ isn't streamed to this device - downloading the same quality as %@";
+"COPY_ERROR" = "Copy error";

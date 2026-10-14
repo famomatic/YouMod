@@ -460,9 +460,14 @@ static void YouModSendSuccess(NSString *message) {
     [SBSkipNotificationView showSuccessInView:parent message:message duration:3.0];
 }
 
+// Errors carry a Copy button so the exact message can be passed on.
 static void YouModSendError(NSString *message) {
     UIView *parent = sbGetNotificationParent();
-    [SBSkipNotificationView showErrorInView:parent message:message duration:4.0];
+    NSString *text = [message copy];
+    [SBSkipNotificationView showInView:parent message:text buttonTitle:LOC(@"COPY") action:^{
+        UIPasteboard.generalPasteboard.string = text ?: @"";
+        YouModSendSuccess(LOC(@"COPIED_TO_CLIPBOARD"));
+    } duration:8.0];
 }
 
 static NSString *YouModByteCount(unsigned long long bytes) {

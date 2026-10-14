@@ -1076,7 +1076,12 @@ static const CGFloat YMRowThumbWidth = 156;
                 done(YES);
             }];
             retry.backgroundColor = UIColor.systemBlueColor;
-            return [UISwipeActionsConfiguration configurationWithActions:@[remove, retry]];
+            UIContextualAction *copy = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:LOC(@"COPY_ERROR") handler:^(UIContextualAction *action, UIView *view, void (^done)(BOOL)) {
+                [self copyErrorOfJob:job];
+                done(YES);
+            }];
+            copy.backgroundColor = UIColor.systemGrayColor;
+            return [UISwipeActionsConfiguration configurationWithActions:@[remove, retry, copy]];
         }
         UIContextualAction *cancel = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:LOC(@"CANCEL") handler:^(UIContextualAction *action, UIView *view, void (^done)(BOOL)) {
             [[YMDownloadQueue sharedQueue] cancelJob:job];
@@ -1101,7 +1106,23 @@ static const CGFloat YMRowThumbWidth = 156;
     return [UISwipeActionsConfiguration configurationWithActions:@[delete, share]];
 }
 
+- (void)copyErrorOfJob:(YMDownloadJob *)job {
+    UIPasteboard.generalPasteboard.string = job.errorMessage ?: LOC(@"DOWNLOAD_FAILED");
+    UIView *parent = sbGetNotificationParent();
+    [SBSkipNotificationView showSuccessInView:parent message:LOC(@"COPIED_TO_CLIPBOARD") duration:2.0];
+}
+
 - (UIContextMenuConfiguration *)tableView:(UITableView *)tableView contextMenuConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath point:(CGPoint)point {
+    YMDownloadJob *job = [self jobAtIndexPath:indexPath];
+    if (!tableView.isEditing && job.state == YMDownloadJobStateFailed) {
+        return [UIContextMenuConfiguration configurationWithIdentifier:nil previewProvider:nil actionProvider:^UIMenu *(NSArray<UIMenuElement *> *suggested) {
+            UIAction *copy = [UIAction actionWithTitle:LOC(@"COPY_ERROR") image:[UIImage systemImageNamed:@"doc.on.doc"] identifier:nil handler:^(UIAction *action) { [self copyErrorOfJob:job]; }];
+            UIAction *retry = [UIAction actionWithTitle:LOC(@"RETRY") image:[UIImage systemImageNamed:@"arrow.clockwise"] identifier:nil handler:^(UIAction *action) { [[YMDownloadQueue sharedQueue] retryJob:job]; }];
+            UIAction *remove = [UIAction actionWithTitle:LOC(@"REMOVE") image:[UIImage systemImageNamed:@"trash"] identifier:nil handler:^(UIAction *action) { [[YMDownloadQueue sharedQueue] removeJob:job]; }];
+            remove.attributes = UIMenuElementAttributesDestructive;
+            return [UIMenu menuWithTitle:job.errorMessage ?: @"" children:@[copy, retry, remove]];
+        }];
+    }
     YMDownloadItem *item = [self itemAtIndexPath:indexPath];
     if (tableView.isEditing || !item) return nil;
     return [UIContextMenuConfiguration configurationWithIdentifier:nil previewProvider:nil actionProvider:^UIMenu *(NSArray<UIMenuElement *> *suggested) {

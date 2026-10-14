@@ -716,3 +716,4 @@
 "GROUP_EARLIER" = "이전";
 "MORE_FROM_CHANNEL" = "이 채널의 다운로드";
 "SABR_FORMAT_SWITCHED" = "%@ 형식은 이 기기로 스트리밍되지 않아 같은 화질의 %@(으)로 받습니다";
+"COPY_ERROR" = "오류 복사";
