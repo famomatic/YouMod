@@ -172,6 +172,8 @@
 "HIDE_MUSIC_PLAYLISTS_DESC" = "피드에서 음악 재생목록 생성기(세 곡 선택)를 숨깁니다.";
 "HIDE_FEED_POST" = "게시물 숨기기";
 "HIDE_FEED_POST_DESC" = "피드의 게시물을 숨깁니다.";
+"POST_ORIGINAL_ASPECT" = "게시물 사진 원본 비율";
+"POST_ORIGINAL_ASPECT_DESC" = "게시물 사진을 정사각형으로 자르지 않고 원본 비율로 표시합니다.";
 "HIDE_SURVEYS" = "설문조사 숨기기";
 "HIDE_SURVEYS_DESC" = "YouTube가 가끔 표시하는 동영상 설문조사를 숨깁니다.";
 "HIDE_SHORTS_SHELF" = "Shorts 섹션 숨기기";

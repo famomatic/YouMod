@@ -172,6 +172,8 @@
 "HIDE_MUSIC_PLAYLISTS_DESC" = "Ẩn trình tạo danh sách phát nhạc (chọn 3 bài hát) trong bảng tin.";
 "HIDE_FEED_POST" = "Ẩn bài đăng";
 "HIDE_FEED_POST_DESC" = "Ẩn các bài đăng trong bảng tin.";
+"POST_ORIGINAL_ASPECT" = "Post images at original ratio";
+"POST_ORIGINAL_ASPECT_DESC" = "Shows post images at their own aspect ratio instead of cropping them to a square.";
 "HIDE_SURVEYS" = "Ẩn khảo sát";
 "HIDE_SURVEYS_DESC" = "Ẩn các khảo sát mà YouTube đôi khi hiển thị.";
 "HIDE_SHORTS_SHELF" = "Ẩn hàng Shorts";

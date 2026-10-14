@@ -172,6 +172,8 @@
 "HIDE_MUSIC_PLAYLISTS_DESC" = "Akıştaki müzik çalma listesi oluşturucuyu gizler.";
 "HIDE_FEED_POST" = "Gönderileri gizle";
 "HIDE_FEED_POST_DESC" = "Akıştaki gönderileri gizler.";
+"POST_ORIGINAL_ASPECT" = "Post images at original ratio";
+"POST_ORIGINAL_ASPECT_DESC" = "Shows post images at their own aspect ratio instead of cropping them to a square.";
 "HIDE_SURVEYS" = "Anketleri gizle";
 "HIDE_SURVEYS_DESC" = "YouTube'un bazen gösterdiği video anketlerini gizler.";
 "HIDE_SHORTS_SHELF" = "Shorts rafını gizle";

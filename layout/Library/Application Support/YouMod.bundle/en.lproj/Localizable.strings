@@ -172,6 +172,8 @@
 "HIDE_MUSIC_PLAYLISTS_DESC" = "Hide music playlist generator (Select music tunes in three) in the feed.";
 "HIDE_FEED_POST" = "Hide posts";
 "HIDE_FEED_POST_DESC" = "Hide posts in feed.";
+"POST_ORIGINAL_ASPECT" = "Post images at original ratio";
+"POST_ORIGINAL_ASPECT_DESC" = "Shows post images at their own aspect ratio instead of cropping them to a square.";
 "HIDE_SURVEYS" = "Hide surveys";
 "HIDE_SURVEYS_DESC" = "Hide video surveys that YouTube shows sometimes.";
 "HIDE_SHORTS_SHELF" = "Hide Shorts shelf";

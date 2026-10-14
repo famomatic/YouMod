@@ -95,3 +95,98 @@ static void YouModFilterChannelButtons(_ASDisplayView *self, NSString *iden) {
     }
 }
 %end
+// Post images at their original aspect ratio. Feed/community posts draw their photo
+// with YTImageZoomNode inside a square Elements (Yoga) box and aspect-fill it, so
+// anything that isn't 1:1 gets cropped. Once the image is known, the square box (the
+// node itself and any wrapper with the very same frame) gets the image's own ratio
+// and the cell is relaid out. Multi-image carousels keep their squares: their items
+// share one row height, so mixed ratios would only leave gaps.
+typedef struct { NSInteger unit; CGFloat value; } YMASDimension; // ASDimension: 0 auto, 1 points, 2 fraction
+
+@interface ASLayoutElementStyleYoga (YouModAspect)
+- (CGFloat)aspectRatio;
+- (void)setAspectRatio:(CGFloat)ratio;
+- (YMASDimension)height;
+- (void)setHeight:(YMASDimension)height;
+@end
+
+@interface YTImageZoomNode : ASDisplayNode
+- (UIImage *)image;
+@end
+
+static const void *kYMPostAspectKey = &kYMPostAspectKey;
+
+static BOOL YMPostImageInCarousel(ASDisplayNode *node) {
+    static Class scrollClass, collectionClass, horizontalScrollClass;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        scrollClass = NSClassFromString(@"ASScrollNode");
+        collectionClass = NSClassFromString(@"ELMCollectionNode");
+        horizontalScrollClass = NSClassFromString(@"ELMScrollableContainerNode2");
+    });
+    NSInteger depth = 0;
+    for (ASDisplayNode *n = node.yogaParent; n && depth < 12; n = n.yogaParent, depth++) {
+        if ((scrollClass && [n isKindOfClass:scrollClass]) || (collectionClass && [n isKindOfClass:collectionClass]) || (horizontalScrollClass && [n isKindOfClass:horizontalScrollClass])) return YES;
+    }
+    return NO;
+}
+
+static void YMApplyPostImageAspect(YTImageZoomNode *node) {
+    if (!IS_ENABLED(PostOriginalAspect)) return;
+    UIImage *image = node.image;
+    if (!image || image.size.width < 1 || image.size.height < 1) return;
+    CGSize box = node.calculatedSize;
+    if (box.width < 1 || box.height < 1) return; // not laid out yet; calculatedLayoutDidChange comes back
+    // Very tall or very wide images are kept within 1:2 and 3:1 so one post can't fill
+    // several screens.
+    CGFloat ratio = MIN(MAX(image.size.width / image.size.height, 0.5), 3.0);
+    NSNumber *applied = objc_getAssociatedObject(node, kYMPostAspectKey);
+    if (applied && fabs(applied.doubleValue - ratio) < 0.01) return;
+    // Only the square crop is changed; anything else is the template's own design.
+    if (fabs(box.width - box.height) > 1.0) return;
+    if (fabs(ratio - 1.0) < 0.02) return;
+    if (YMPostImageInCarousel(node)) return;
+
+    ASDisplayNode *top = nil;
+    NSInteger depth = 0;
+    for (ASDisplayNode *n = node; n && depth < 4; n = n.yogaParent, depth++) {
+        CGSize size = n.calculatedSize;
+        if (fabs(size.width - box.width) > 1.0 || fabs(size.height - box.height) > 1.0) break;
+        ASLayoutElementStyleYoga *style = n.style;
+        if (![style respondsToSelector:@selector(setAspectRatio:)]) break;
+        YMASDimension height = style.height;
+        if (height.unit == 1) style.height = (YMASDimension){0, 0}; // fixed square height -> auto
+        style.aspectRatio = ratio; // Yoga: width / height
+        top = n;
+    }
+    if (!top) return;
+    objc_setAssociatedObject(node, kYMPostAspectKey, @(ratio), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [node setNeedsLayout];
+    [top setNeedsLayout];
+}
+
+static void YMSchedulePostImageAspect(YTImageZoomNode *node) {
+    if (!IS_ENABLED(PostOriginalAspect)) return;
+    __weak YTImageZoomNode *weakNode = node;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        YTImageZoomNode *strongNode = weakNode;
+        if (strongNode) YMApplyPostImageAspect(strongNode);
+    });
+}
+
+%hook YTImageZoomNode
+- (void)setImage:(UIImage *)image {
+    %orig;
+    if (image) YMSchedulePostImageAspect(self);
+}
+- (void)calculatedLayoutDidChange {
+    %orig;
+    if (self.image) YMSchedulePostImageAspect(self);
+}
+// Elements re-applies the template's style when the cell is reused/updated.
+- (void)controllerDidApplyProperties {
+    %orig;
+    objc_setAssociatedObject(self, kYMPostAspectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (self.image) YMSchedulePostImageAspect(self);
+}
+%end

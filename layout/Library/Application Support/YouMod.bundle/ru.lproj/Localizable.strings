@@ -172,6 +172,8 @@
 "HIDE_MUSIC_PLAYLISTS_DESC" = "Скрывает генератор музыкальных плейлистов (подбор трёх мелодий) в ленте.";
 "HIDE_FEED_POST" = "Скрыть публикации";
 "HIDE_FEED_POST_DESC" = "Скрывает публикации в ленте.";
+"POST_ORIGINAL_ASPECT" = "Post images at original ratio";
+"POST_ORIGINAL_ASPECT_DESC" = "Shows post images at their own aspect ratio instead of cropping them to a square.";
 "HIDE_SURVEYS" = "Скрыть опросы";
 "HIDE_SURVEYS_DESC" = "Скрывает опросы, которые YouTube иногда показывает.";
 "HIDE_SHORTS_SHELF" = "Скрыть полку Shorts";

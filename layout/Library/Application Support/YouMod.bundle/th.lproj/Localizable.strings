@@ -172,6 +172,8 @@
 "HIDE_MUSIC_PLAYLISTS_DESC" = "ซ่อนตัวสร้างเพลย์ลิสต์ในฟีด";
 "HIDE_FEED_POST" = "ซ่อนโพส";
 "HIDE_FEED_POST_DESC" = "ซ่อนโพสในฟีด";
+"POST_ORIGINAL_ASPECT" = "Post images at original ratio";
+"POST_ORIGINAL_ASPECT_DESC" = "Shows post images at their own aspect ratio instead of cropping them to a square.";
 "HIDE_SURVEYS" = "ซ่อนแบบสำรวจ";
 "HIDE_SURVEYS_DESC" = "ซ่อนแบบสำรวจวิดีโอที่ YouTube แสดงในบางครั้ง";
 "HIDE_SHORTS_SHELF" = "ซ่อน Shorts";

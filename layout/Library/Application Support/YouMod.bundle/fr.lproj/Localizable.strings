@@ -172,6 +172,8 @@
 "HIDE_MUSIC_PLAYLISTS_DESC" = "Masque le générateur de playlists musicales (sélection de morceaux par thèmes) dans le flux.";
 "HIDE_FEED_POST" = "Masquer les publications";
 "HIDE_FEED_POST_DESC" = "Masque les publications dans le flux.";
+"POST_ORIGINAL_ASPECT" = "Post images at original ratio";
+"POST_ORIGINAL_ASPECT_DESC" = "Shows post images at their own aspect ratio instead of cropping them to a square.";
 "HIDE_SURVEYS" = "Masquer les sondages";
 "HIDE_SURVEYS_DESC" = "Masque les sondages que YouTube affiche parfois.";
 "HIDE_SHORTS_SHELF" = "Masquer la section Shorts";

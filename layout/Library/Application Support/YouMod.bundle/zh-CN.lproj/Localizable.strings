@@ -172,6 +172,8 @@
 "HIDE_MUSIC_PLAYLISTS_DESC" = "隐藏信息流中的音乐播放列表生成器（三选一精选音乐）。";
 "HIDE_FEED_POST" = "隐藏帖子";
 "HIDE_FEED_POST_DESC" = "隐藏信息流中的帖子。";
+"POST_ORIGINAL_ASPECT" = "Post images at original ratio";
+"POST_ORIGINAL_ASPECT_DESC" = "Shows post images at their own aspect ratio instead of cropping them to a square.";
 "HIDE_SURVEYS" = "隐藏问卷调查";
 "HIDE_SURVEYS_DESC" = "隐藏 YouTube 偶尔显示的视频问卷调查。";
 "HIDE_SHORTS_SHELF" = "隐藏 Shorts 栏目";

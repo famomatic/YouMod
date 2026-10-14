@@ -172,6 +172,8 @@
 "HIDE_MUSIC_PLAYLISTS_DESC" = "Nasconde il generatore di playlist musicali (Seleziona tre brani musicali) nel feed.";
 "HIDE_FEED_POST" = "Nascondi post";
 "HIDE_FEED_POST_DESC" = "Nasconde i post nel feed.";
+"POST_ORIGINAL_ASPECT" = "Post images at original ratio";
+"POST_ORIGINAL_ASPECT_DESC" = "Shows post images at their own aspect ratio instead of cropping them to a square.";
 "HIDE_SURVEYS" = "Nascondi sondaggi";
 "HIDE_SURVEYS_DESC" = "Nasconde i sondaggi che YouTube mostra a volte.";
 "HIDE_SHORTS_SHELF" = "Nascondi sezione Shorts";

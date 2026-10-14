@@ -282,6 +282,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             YMToggle(YMLOC(@"HIDE_MUSIC_PLAYLISTS"), YMLOC(@"HIDE_MUSIC_PLAYLISTS_DESC"), HideGenMusicShelf),
             YMToggle(YMLOC(@"HIDE_SURVEYS"), YMLOC(@"HIDE_SURVEYS_DESC"), HideSurveys),
             YMToggle(YMLOC(@"HIDE_FEED_POST"), YMLOC(@"HIDE_FEED_POST_DESC"), HideFeedPost),
+            YMToggle(YMLOC(@"POST_ORIGINAL_ASPECT"), YMLOC(@"POST_ORIGINAL_ASPECT_DESC"), PostOriginalAspect),
             YMToggle(YMLOC(@"HIDE_PLAYABLES"), YMLOC(@"HIDE_PLAYABLES_DESC"), HidePlayables),
             YMToggle(YMLOC(@"HIDE_SHORTS_SHELF"), YMLOC(@"HIDE_SHORTS_SHELF_DESC"), HideShortsShelf),
             YMToggle(YMLOC(@"KEEP_SHORTS_SUBSCRIPT"), YMLOC(@"KEEP_SHORTS_SUBSCRIPT_DESC"), KeepShortsSubscript),
@@ -696,6 +697,7 @@ void YMRegisterDefaults(void) {
             UseFFmpeg: @YES,
             DownloadEmbedMetadata: @YES,
             NoPauseOnFullscreenPanel: @YES,
+            PostOriginalAspect: @YES,
             PostDownloadAction: @(PostDownloadActionKeep), // Photos only when asked for
             SBButtonKey: @YES,
             DisableHints: @YES,
