@@ -119,6 +119,16 @@ static const uint64_t kSABRAbrStatePlayerTimeMs = 28; // ClientAbrState.player_t
 static const uint64_t kSABRAbrStateEnabledTracks = 40;
 static const uint64_t kSABRTracksAudioAndVideo = 0;
 static const uint64_t kSABRTracksAudioOnly = 1;
+// The quality the server's ABR may pick is capped by what the player says about
+// itself: the resolution last chosen by hand / pinned (#16, #21), the viewport (#18,
+// #19) and a bitrate cap (#20). Captured from a phone-sized player on auto quality,
+// they keep 1440p+ out of reach - the server then answers a 1440p preference with
+// sabr.no_video_selected. A download states the target format's own size instead.
+static const uint64_t kSABRAbrStateManualResolution = 16;
+static const uint64_t kSABRAbrStateViewportWidth    = 18;
+static const uint64_t kSABRAbrStateViewportHeight   = 19;
+static const uint64_t kSABRAbrStateBitrateCap       = 20;
+static const uint64_t kSABRAbrStateStickyResolution = 21;
 
 // #5 -> #1 -> #6 repeated FormatId = the full available-format list (source of lastModified + xtags).
 static const uint64_t kSABRAvailInner = 1; // #5.#1
@@ -252,6 +262,17 @@ static NSData *SABRSetVarintField(NSData *msg, uint64_t field, uint64_t value) {
     return out;
 }
 
+// Return a copy of `msg` without any occurrence of `field`.
+static NSData *SABRRemoveField(NSData *msg, uint64_t field) {
+    const uint8_t *b = (const uint8_t *)msg.bytes;
+    NSMutableData *out = [NSMutableData data];
+    BOOL ok = SABRIterateTopLevel(msg, ^BOOL(uint64_t f, int w, NSUInteger fs, NSUInteger fe, NSUInteger ps, NSUInteger pl) {
+        if (f != field) [out appendBytes:b + fs length:fe - fs];
+        return YES;
+    });
+    return ok ? out : [msg copy];
+}
+
 #pragma mark - Available formats (#5) → {lastModified, xtags} for a chosen itag
 
 // A resolved download target: itag + the lastModified/xtags copied verbatim from #5.
@@ -260,6 +281,8 @@ static NSData *SABRSetVarintField(NSData *msg, uint64_t field, uint64_t value) {
 @property (nonatomic, assign) uint64_t lastModified;
 @property (nonatomic, strong) NSData *xtags;   // may be empty; always emitted (matches the real client)
 @property (nonatomic, assign) BOOL found;
+@property (nonatomic, assign) uint64_t width;  // from the player response, when registered
+@property (nonatomic, assign) uint64_t height;
 @end
 @implementation YMSABRFormat @end
 
@@ -581,6 +604,15 @@ static NSData *SABRBuildRequestBody(NSData *orig, YMSABRFormat *videoFmt, YMSABR
             // ClientAbrState, keep the rest.
             NSData *state = SABRSetVarintField([orig subdataWithRange:NSMakeRange(ps, pl)], kSABRAbrStatePlayerTimeMs, playerTimeMs);
             state = SABRSetVarintField(state, kSABRAbrStateEnabledTracks, videoFmt ? kSABRTracksAudioAndVideo : kSABRTracksAudioOnly);
+            YMSABRFormat *known = videoFmt ? SABRKnownFormats()[@(videoFmt.itag)] : nil;
+            if (known.width && known.height) {
+                uint64_t resolution = MIN(known.width, known.height); // "1440p" is the short side
+                state = SABRSetVarintField(state, kSABRAbrStateManualResolution, resolution);
+                state = SABRSetVarintField(state, kSABRAbrStateStickyResolution, resolution);
+                state = SABRSetVarintField(state, kSABRAbrStateViewportWidth, known.width);
+                state = SABRSetVarintField(state, kSABRAbrStateViewportHeight, known.height);
+                state = SABRRemoveField(state, kSABRAbrStateBitrateCap);
+            }
             SABRAppendBytesField(out, kSABRReqClientAbrState, state);
             return YES;
         }
@@ -920,8 +952,13 @@ static void SABRRunDownload(uint64_t videoItag, uint64_t audioItag,
         ^(NSURL *videoURL, NSURL *audioURL, NSString *err) { completion(audioURL, err); });
 }
 + (void)registerFormatItag:(int)itag lastModified:(unsigned long long)lastModified xtags:(NSString *)xtags {
+    [self registerFormatItag:itag lastModified:lastModified xtags:xtags width:0 height:0];
+}
++ (void)registerFormatItag:(int)itag lastModified:(unsigned long long)lastModified xtags:(NSString *)xtags width:(int)width height:(int)height {
     if (itag <= 0) return;
     YMSABRFormat *fmt = [YMSABRFormat new];
+    fmt.width = width > 0 ? (uint64_t)width : 0;
+    fmt.height = height > 0 ? (uint64_t)height : 0;
     fmt.itag = (uint64_t)itag;
     fmt.lastModified = lastModified;
     fmt.xtags = [xtags dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];

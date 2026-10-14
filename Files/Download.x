@@ -1382,7 +1382,9 @@ static void YouModRegisterSABRFormat(YouModMediaFormat *format) {
     if (!stream) return;
     unsigned long long lastModified = [stream respondsToSelector:@selector(lastModified)] ? ((unsigned long long (*)(id, SEL))objc_msgSend)(stream, @selector(lastModified)) : 0;
     NSString *xtags = [stream respondsToSelector:@selector(xtags)] ? ((NSString *(*)(id, SEL))objc_msgSend)(stream, @selector(xtags)) : nil;
-    [YMSABR registerFormatItag:format.itag lastModified:lastModified xtags:xtags];
+    int width = [stream respondsToSelector:@selector(width)] ? ((int (*)(id, SEL))objc_msgSend)(stream, @selector(width)) : 0;
+    int height = [stream respondsToSelector:@selector(height)] ? ((int (*)(id, SEL))objc_msgSend)(stream, @selector(height)) : 0;
+    [YMSABR registerFormatItag:format.itag lastModified:lastModified xtags:xtags width:width height:height];
 }
 
 // The server streams only the formats its session config lists - per device, e.g.

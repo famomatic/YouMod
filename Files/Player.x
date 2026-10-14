@@ -4,18 +4,31 @@
 // Set by setActiveSingleVideo: when auto fullscreen should run for the new video.
 static char kYMAutoFullscreenPendingKey;
 
+// The watch page's player, open and not in fullscreen. The mini player is a small
+// player view; fullscreen is layout 3. (Other layout numbers aren't relied on: the
+// expanded watch page isn't the same value everywhere.)
+static BOOL YouModPlayerOnOpenWatchPage(YTPlayerViewController *player) {
+    if (player.playerViewLayout == 3) return NO;
+    UIView *view = player.view;
+    if (!view.window) return NO;
+    return CGRectGetWidth(view.bounds) >= CGRectGetWidth(view.window.bounds) * 0.8;
+}
+
 // Called on playback time ticks: once the video is really playing (a tick at least
 // 0.6 s after it was set active), enter fullscreen from the open watch page. A
 // video that is already fullscreen or sits in the mini player is left alone.
 static void YouModMaybeAutoFullscreen(YTPlayerViewController *player) {
     NSNumber *since = objc_getAssociatedObject(player, &kYMAutoFullscreenPendingKey);
     if (!since) return;
-    int layout = player.playerViewLayout;
-    if (layout != 2) {
-        if (layout == 3 || layout == 1) objc_setAssociatedObject(player, &kYMAutoFullscreenPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSTimeInterval elapsed = NSDate.timeIntervalSinceReferenceDate - since.doubleValue;
+    if (elapsed < 0.6) return;
+    BOOL onWatchPage = YouModPlayerOnOpenWatchPage(player);
+    // Not on the open watch page within a few seconds (mini player, background,
+    // already fullscreen): this video doesn't get auto fullscreen.
+    if (!onWatchPage) {
+        if (player.playerViewLayout == 3 || elapsed > 5) objc_setAssociatedObject(player, &kYMAutoFullscreenPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return;
     }
-    if (NSDate.timeIntervalSinceReferenceDate - since.doubleValue < 0.6) return;
     objc_setAssociatedObject(player, &kYMAutoFullscreenPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     __weak YTPlayerViewController *weakPlayer = player;
     dispatch_async(dispatch_get_main_queue(), ^{ [weakPlayer YouModAutoFullscreen]; });
@@ -1265,7 +1278,7 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
 
 %new
 - (void)YouModAutoFullscreen {
-    if (self.playerViewLayout != 2) return; // only from the open watch page, never from the mini player
+    if (!YouModPlayerOnOpenWatchPage(self)) return; // only from the open watch page, never from the mini player
     YTWatchController *watchController = [self valueForKey:@"_UIDelegate"];
     [watchController showFullScreen];
 }
