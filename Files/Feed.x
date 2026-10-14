@@ -117,6 +117,59 @@ typedef struct { NSInteger unit; CGFloat value; } YMASDimension; // ASDimension:
 @end
 
 static const void *kYMPostAspectKey = &kYMPostAspectKey;
+static const void *kYMPostUncroppedKey = &kYMPostUncroppedKey;
+
+// Post photos are served from YouTube's image server (yt3.ggpht.com /
+// *.googleusercontent.com) with options after "=" that ask it for a square crop:
+// "=s1080-c-fcrop64=1,00000000ffffffff-rw-nd-v1" ("c" = crop to an s×s square). The
+// app therefore only ever receives a square picture. Dropping the crop/size options
+// and asking for the long side instead returns the whole photo. Avatars and banners
+// (marked by "k", "c0x...", "no", "rj") keep their URL.
+static NSURL *YMUncroppedPostImageURL(NSURL *url) {
+    NSString *host = url.host.lowercaseString;
+    if (!([host hasSuffix:@"ggpht.com"] || [host hasSuffix:@"googleusercontent.com"])) return nil;
+    NSString *string = url.absoluteString;
+    // The options start at the first "=" of the last path segment ("fcrop64=" has one too).
+    NSRange slash = [string rangeOfString:@"/" options:NSBackwardsSearch];
+    if (slash.location == NSNotFound) return nil;
+    NSRange eq = [string rangeOfString:@"=" options:0 range:NSMakeRange(slash.location, string.length - slash.location)];
+    if (eq.location == NSNotFound) return nil;
+    NSString *base = [string substringToIndex:eq.location];
+    if ([base containsString:@"?"]) return nil;
+    NSArray<NSString *> *options = [[string substringFromIndex:eq.location + 1] componentsSeparatedByString:@"-"];
+    BOOL crop = NO, framed = NO;
+    NSInteger size = 0;
+    NSMutableArray<NSString *> *kept = [NSMutableArray array];
+    for (NSString *option in options) {
+        if ([option isEqualToString:@"c"] || [option isEqualToString:@"p"]) { crop = YES; continue; }
+        if ([option hasPrefix:@"fcrop64"]) { framed = YES; continue; }
+        if ([option isEqualToString:@"k"] || [option hasPrefix:@"c0x"] || [option isEqualToString:@"no"] || [option isEqualToString:@"rj"]) return nil;
+        if (option.length > 1 && ([option hasPrefix:@"s"] || [option hasPrefix:@"w"] || [option hasPrefix:@"h"])) {
+            NSString *digits = [option substringFromIndex:1];
+            if ([digits rangeOfCharacterFromSet:NSCharacterSet.decimalDigitCharacterSet.invertedSet].location == NSNotFound) {
+                size = MAX(size, digits.integerValue);
+                continue;
+            }
+        }
+        [kept addObject:option];
+    }
+    // Post photos carry both the square crop and the fcrop64 frame; big enough to
+    // be the photo itself, not a tiny preview.
+    if (!crop || !framed || size < 300) return nil;
+    [kept insertObject:[NSString stringWithFormat:@"s%ld", (long)MIN(MAX(size, 1080), 2048)] atIndex:0];
+    return [NSURL URLWithString:[NSString stringWithFormat:@"%@=%@", base, [kept componentsJoinedByString:@"-"]]];
+}
+
+static NSURL *YMPostImageURLForNode(ASDisplayNode *node, NSURL *url) {
+    static BOOL enabled;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ enabled = IS_ENABLED(PostOriginalAspect); });
+    if (!enabled || !url) return url;
+    NSURL *uncropped = YMUncroppedPostImageURL(url);
+    if (!uncropped) return url;
+    objc_setAssociatedObject(node, kYMPostUncroppedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return uncropped;
+}
 static const CGFloat kYMPostImageMinWidth = 150; // skips avatars, icons, badges
 
 static ASDisplayNode *YMNodeParent(ASDisplayNode *node) {
@@ -146,12 +199,13 @@ static BOOL YMPostImageEligible(ASDisplayNode *node) {
         cellClass = NSClassFromString(@"ASCellNode");
     });
     NSInteger depth = 0;
+    BOOL uncropped = [objc_getAssociatedObject(node, kYMPostUncroppedKey) boolValue];
     for (ASDisplayNode *n = YMNodeParent(node); n && depth < 40; n = YMNodeParent(n), depth++) {
         if (YMNodeIsPostRoot(n)) return YES;
         if ((scrollClass && [n isKindOfClass:scrollClass]) || (collectionClass && [n isKindOfClass:collectionClass]) || (scrollContainerClass && [n isKindOfClass:scrollContainerClass])) return NO;
-        if (cellClass && [n isKindOfClass:cellClass]) return NO; // reached the feed cell without a post root
+        if (cellClass && [n isKindOfClass:cellClass]) return uncropped; // reached the cell without a recognized post root
     }
-    return NO;
+    return uncropped;
 }
 
 static void YMApplyPostImageAspect(ASDisplayNode *node) {
@@ -187,6 +241,16 @@ static void YMApplyPostImageAspect(ASDisplayNode *node) {
         [n setNeedsLayout];
         if (n == top) break;
     }
+    // If the template's layout doesn't take the new ratio, at least show the whole
+    // photo inside the square instead of cropping it.
+    __weak ASDisplayNode *weakNode = node;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        ASDisplayNode *strongNode = weakNode;
+        if (!strongNode) return;
+        CGSize size = strongNode.calculatedSize;
+        if (size.height > 0 && fabs(size.width / size.height - ratio) > 0.05 && [strongNode respondsToSelector:@selector(setContentMode:)])
+            ((void (*)(id, SEL, UIViewContentMode))objc_msgSend)(strongNode, @selector(setContentMode:), UIViewContentModeScaleAspectFit);
+    });
 }
 
 // Every image node in the app passes through here (thumbnails, avatars, icons...), so
@@ -210,6 +274,12 @@ static void YMSchedulePostImageAspect(ASDisplayNode *node) {
 }
 
 %hook ELMImageNode
+- (id)downloadImageWithURL:(NSURL *)url shouldRetry:(BOOL)retry callbackQueue:(id)queue downloadProgress:(id)progress completion:(id)completion {
+    return %orig(YMPostImageURLForNode((ASDisplayNode *)self, url), retry, queue, progress, completion);
+}
+- (void)cachedImageWithURL:(NSURL *)url callbackQueue:(id)queue completion:(id)completion {
+    %orig(YMPostImageURLForNode((ASDisplayNode *)self, url), queue, completion);
+}
 - (void)setImage:(UIImage *)image {
     %orig;
     if (image) YMSchedulePostImageAspect((ASDisplayNode *)self);
@@ -227,6 +297,12 @@ static void YMSchedulePostImageAspect(ASDisplayNode *node) {
 %end
 
 %hook YTImageZoomNode
+- (id)downloadImageWithURL:(NSURL *)url shouldRetry:(BOOL)retry callbackQueue:(id)queue downloadProgress:(id)progress completion:(id)completion {
+    return %orig(YMPostImageURLForNode((ASDisplayNode *)self, url), retry, queue, progress, completion);
+}
+- (void)cachedImageWithURL:(NSURL *)url callbackQueue:(id)queue completion:(id)completion {
+    %orig(YMPostImageURLForNode((ASDisplayNode *)self, url), queue, completion);
+}
 - (void)setImage:(UIImage *)image {
     %orig;
     if (image) YMSchedulePostImageAspect((ASDisplayNode *)self);
