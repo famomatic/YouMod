@@ -328,6 +328,29 @@ static YMSABRFormat *SABRResolveFormatOrKnown(NSData *body, uint64_t itag) {
     return known.found ? known : fmt;
 }
 
+// Every itag in the captured request's available-format list (#5.#1.#6) - the
+// formats the server will actually stream in this session.
+static NSArray<NSNumber *> *SABRListedItags(NSData *body) {
+    NSMutableOrderedSet<NSNumber *> *itags = [NSMutableOrderedSet orderedSet];
+    SABRIterateTopLevel(body, ^BOOL(uint64_t f5, int w5, NSUInteger fs, NSUInteger fe, NSUInteger ps5, NSUInteger pl5) {
+        if (f5 != kSABRReqUstreamerConfig || w5 != kProtoWireLengthDelimited) return YES;
+        NSData *avail = [body subdataWithRange:NSMakeRange(ps5, pl5)];
+        SABRIterateTopLevel(avail, ^BOOL(uint64_t f1, int w1, NSUInteger fs1, NSUInteger fe1, NSUInteger ps1, NSUInteger pl1) {
+            if (f1 != kSABRAvailInner || w1 != kProtoWireLengthDelimited) return YES;
+            NSData *inner = [avail subdataWithRange:NSMakeRange(ps1, pl1)];
+            SABRIterateTopLevel(inner, ^BOOL(uint64_t f6, int w6, NSUInteger fs6, NSUInteger fe6, NSUInteger ps6, NSUInteger pl6) {
+                if (f6 != kSABRAvailList || w6 != kProtoWireLengthDelimited) return YES;
+                YMSABRFormat *fmt = SABRParseFormatId([inner subdataWithRange:NSMakeRange(ps6, pl6)]);
+                if (fmt.itag) [itags addObject:@(fmt.itag)];
+                return YES;
+            });
+            return YES;
+        });
+        return NO;
+    });
+    return itags.array;
+}
+
 // Encode a FormatId submessage { #1 itag, #2 lastModified, #3 xtags }. xtags is
 // always emitted (empty string if none) — matches YTKACE / the real client.
 static NSData *SABREncodeFormatId(YMSABRFormat *fmt) {
@@ -641,7 +664,8 @@ static void SABRIngestError(const uint8_t *payload, NSUInteger size, YMSABRSessi
         else if (f == kSABRErrorCode && w == kProtoWireVarint) SABRReadProtoVarint(b, msg.length, ps, &code);
         return YES;
     });
-    session.error = [NSString stringWithFormat:@"server error: %@ (%llu)", type ?: @"unknown", code];
+    NSString *listed = [SABRListedItags(gCapPlainBody) componentsJoinedByString:@","];
+    session.error = [NSString stringWithFormat:@"server error: %@ (%llu) [offered: %@]", type ?: @"unknown", code, listed.length ? listed : @"-"];
 }
 
 static void SABRIngestResponse(NSData *data, NSDictionary<NSNumber *, YMSABRTrack *> *tracks,
@@ -753,7 +777,7 @@ static void SABRRunDownload(uint64_t videoItag, uint64_t audioItag,
         YMSABRFormat *audioFmt = SABRResolveFormatOrKnown(gCapPlainBody, audioItag);
         if ((wantVideo && !videoFmt.found) || !audioFmt.found) {
             NSString *videoState = !wantVideo ? @"n/a" : (videoFmt.found ? @"ok" : @"missing");
-            dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, nil, [NSString stringWithFormat:@"format not available (video %llu:%@, audio %llu:%@)", videoItag, videoState, audioItag, audioFmt.found?@"ok":@"missing"]); });
+            dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, nil, [NSString stringWithFormat:@"format not available (video %llu:%@, audio %llu:%@) [offered: %@]", videoItag, videoState, audioItag, audioFmt.found?@"ok":@"missing", [SABRListedItags(gCapPlainBody) componentsJoinedByString:@","]]); });
             return;
         }
 
@@ -903,6 +927,11 @@ static void SABRRunDownload(uint64_t videoItag, uint64_t audioItag,
     fmt.xtags = [xtags dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
     fmt.found = YES;
     dispatch_async(SABRQueue(), ^{ SABRKnownFormats()[@(itag)] = fmt; });
+}
++ (NSArray<NSNumber *> *)listedItags {
+    __block NSArray<NSNumber *> *itags = nil;
+    dispatch_sync(SABRQueue(), ^{ itags = gCapPlainBody.length ? SABRListedItags(gCapPlainBody) : nil; });
+    return itags;
 }
 + (void)cancelCurrent {
     dispatch_async(SABRQueue(), ^{ gSABRCancel = YES; }); // loop aborts at its next round

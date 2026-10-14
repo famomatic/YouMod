@@ -883,6 +883,8 @@ typedef NS_ENUM(NSInteger, YouModTranslationState) {
 // {itag, lastModified, xtags} from the player response, for formats the captured
 // request doesn't list.
 + (void)registerFormatItag:(int)itag lastModified:(unsigned long long)lastModified xtags:(NSString *)xtags;
+// Itags the captured request says the server streams this session (nil before a capture).
++ (NSArray<NSNumber *> *)listedItags;
 + (void)cancelCurrent;
 @end
 

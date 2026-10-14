@@ -1380,7 +1380,31 @@ static void YouModRegisterSABRFormat(YouModMediaFormat *format) {
     [YMSABR registerFormatItag:format.itag lastModified:lastModified xtags:xtags];
 }
 
+// The server streams only the formats its session config lists - per device, e.g.
+// 1440p+ in VP9 but not AV1 on phones without an AV1 decoder, even though the player
+// response names both. A chosen format it doesn't list is swapped for the listed one
+// at the same resolution (same fps first, then the usual codec order).
+static YouModMediaFormat *YouModSABRStreamableVideoFormat(YouModMediaFormat *format) {
+    NSArray<NSNumber *> *listed = [YMSABR listedItags];
+    if (listed.count == 0 || [listed containsObject:@(format.itag)]) return format;
+    YouModMediaFormat *best = nil;
+    for (YTIFormatStream *stream in YouModAdaptiveFormatObjectsForPlayer(YouModCurrentPlayerViewController)) {
+        YouModMediaFormat *candidate = YouModMediaFormatFromStream(stream, YES);
+        if (!candidate || candidate.resolution != format.resolution || ![listed containsObject:@(candidate.itag)]) continue;
+        if (!best) { best = candidate; continue; }
+        BOOL candidateFPS = candidate.fps == format.fps, bestFPS = best.fps == format.fps;
+        if (candidateFPS != bestFPS) { if (candidateFPS) best = candidate; continue; }
+        if (candidate.fps != best.fps) { if (candidate.fps > best.fps) best = candidate; continue; }
+        NSInteger candidateRank = YouModCodecRank(candidate), bestRank = YouModCodecRank(best);
+        if (candidateRank != bestRank) { if (candidateRank < bestRank) best = candidate; continue; }
+        if (candidate.contentLength > best.contentLength) best = candidate;
+    }
+    if (best) YouModSendToast([NSString stringWithFormat:LOC(@"SABR_FORMAT_SWITCHED"), YouModMimeDetail(format.mimeType), YouModMimeDetail(best.mimeType)]);
+    return best ?: format;
+}
+
 - (void)startSABRVideoDownloadWithVideoFormat:(YouModMediaFormat *)videoFormat audioFormat:(YouModMediaFormat *)audioFormat fileName:(NSString *)fileName presenter:(UIViewController *)presenter {
+    videoFormat = YouModSABRStreamableVideoFormat(videoFormat);
     self.active = YES;
     self.cancelled = NO;
     self.completedBytes = 0;
