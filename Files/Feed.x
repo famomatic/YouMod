@@ -189,8 +189,19 @@ static void YMApplyPostImageAspect(ASDisplayNode *node) {
     }
 }
 
+// Every image node in the app passes through here (thumbnails, avatars, icons...), so
+// everything that can be decided on the spot is, and only a big square box holding a
+// non-square image - the post photo case - is handed to the main queue.
 static void YMSchedulePostImageAspect(ASDisplayNode *node) {
-    if (!IS_ENABLED(PostOriginalAspect)) return;
+    static BOOL enabled;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ enabled = IS_ENABLED(PostOriginalAspect); });
+    if (!enabled) return;
+    if (objc_getAssociatedObject(node, kYMPostAspectKey)) return;
+    CGSize box = node.calculatedSize;
+    if (box.width < kYMPostImageMinWidth || fabs(box.width - box.height) > 1.0) return;
+    UIImage *image = [node respondsToSelector:@selector(image)] ? node.image : nil;
+    if (!image || image.size.height < 1 || fabs(image.size.width / image.size.height - 1.0) < 0.02) return;
     __weak ASDisplayNode *weakNode = node;
     dispatch_async(dispatch_get_main_queue(), ^{
         ASDisplayNode *strongNode = weakNode;
