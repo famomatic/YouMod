@@ -32,6 +32,11 @@
 - (id)activeCache { return IS_ENABLED(HideSearchHis) ? nil : %orig; }
 %end
 
+// 21.44+: renamed to ...Impl
+%hook YTPersonalizedSuggestionsCacheProviderImpl
+- (id)activeCache { return IS_ENABLED(HideSearchHis) ? nil : %orig; }
+%end
+
 // Hide related videos in the player
 %hook YTWatchNextResultsViewController
 - (void)setVisibleSections:(NSInteger)sections {

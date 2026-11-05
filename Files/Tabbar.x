@@ -121,8 +121,7 @@ static NSString *ymTitleForTabID(NSString *tabID) {
     return nil;
 }
 
-%hook YTPivotBarView
-- (void)setRenderer:(YTIPivotBarRenderer *)renderer {
+static void YMApplyTabOrder(YTIPivotBarRenderer *renderer) {
     NSArray *savedOrder = [[NSUserDefaults standardUserDefaults] arrayForKey:TabOrder];
     if (savedOrder.count > 0) {
         NSMutableArray <YTIPivotBarSupportedRenderers *> *items = [renderer itemsArray];
@@ -163,9 +162,23 @@ static NSString *ymTitleForTabID(NSString *tabID) {
         [items removeAllObjects];
         [items addObjectsFromArray:ordered];
     }
+}
+
+%hook YTPivotBarView
+- (void)setRenderer:(YTIPivotBarRenderer *)renderer {
+    YMApplyTabOrder(renderer);
     %orig(renderer);
 }
 %end
+
+// 21.44+: floating tab bar (separate class) needs the same tab ordering
+%hook YTFloatingPivotBarView
+- (void)setRenderer:(YTIPivotBarRenderer *)renderer {
+    YMApplyTabOrder(renderer);
+    %orig(renderer);
+}
+%end
+
 
 // Hide Tab Bar Indicators
 %hook YTPivotBarIndicatorView
@@ -347,6 +360,141 @@ static BOOL isGestureRegistered = NO;
 }
 %end
 
+// ---------------------------------------------------------------------------
+// Tab bar style (YouTube 21.44+)
+//   +[YTFloatingBarExperiment enableFloatingBottomBar] is read by YTPivotBarViewController -loadView to pick
+//   YTFloatingPivotBarView vs the legacy YTPivotBarView, so it must be decided before the tab bar loads
+//   (a style change needs an app restart).  +isIconsOnly drives the label of the floating bar items.
+// ---------------------------------------------------------------------------
+static BOOL YMHybridBar(void) { return INTFORVAL(TabBarStyle) == 3; }
+
+%hook YTFloatingBarExperiment
++ (BOOL)enableFloatingBottomBar {
+    switch (INTFORVAL(TabBarStyle)) {
+        case 1: case 3: return YES;
+        case 2: return NO;
+        default: return %orig;
+    }
+}
++ (BOOL)isIconsOnly { return IS_ENABLED(FloatBarLabels) ? NO : %orig; }
+%end
+
+%hook YTColdConfig
+- (BOOL)mainAppCoreClientEnableIconOnlyDefaultPivotBar { return IS_ENABLED(FloatBarLabels) ? NO : %orig; }
+- (BOOL)mainAppCoreClientEnableIconOnlyOfflinePivotBar { return IS_ENABLED(FloatBarLabels) ? NO : %orig; }
+- (BOOL)mainAppCoreClientEnableIconOnlyBottomNav { return IS_ENABLED(FloatBarLabels) ? NO : %orig; }
+// Hybrid relies on YouTube's scroll-driven hide/show calls
+- (BOOL)iosEnableNonStickyPivotBar { return YMHybridBar() ? YES : %orig; }
+- (BOOL)mainAppCoreClientHidePivotBarOnScrollInTabs { return YMHybridBar() ? YES : %orig; }
+%end
+
+// Hybrid: instead of hiding the floating bar while scrolling down, morph it into a docked (edge to edge) bar
+// and morph it back while scrolling up.  Only the contentView transform is touched, so it does not depend on
+// how YouTube lays the capsule out.
+static __weak YTFloatingPivotBarView *gYMFloatBar = nil;
+static CGFloat gYMDock = 0;                    // 0 = floating, 1 = docked
+static BOOL gYMInScrollPivotUpdate = NO;
+static const void *kYMDockBackdropKey = &kYMDockBackdropKey;
+static const void *kYMDockRadiusKey = &kYMDockRadiusKey;
+
+static void YMApplyDock(YTFloatingPivotBarView *bar, CGFloat p) {
+    UIView *cv = [bar respondsToSelector:@selector(contentView)] ? bar.contentView : nil;
+    UIWindow *win = bar.window;
+    if (!cv || !win || !cv.superview) return;
+
+    UIVisualEffectView *backdrop = objc_getAssociatedObject(bar, kYMDockBackdropKey);
+    if (p < 0.001) {
+        cv.transform = CGAffineTransformIdentity;
+        for (UIView *item in bar.itemViews) item.transform = CGAffineTransformIdentity;
+        NSNumber *r = objc_getAssociatedObject(bar, kYMDockRadiusKey);
+        if (r) cv.layer.cornerRadius = r.doubleValue;
+        backdrop.alpha = 0;
+        return;
+    }
+
+    // Measure the capsule as YouTube laid it out (transform is identity here)
+    CGRect r = [cv.superview convertRect:cv.frame toView:nil];
+    if (r.size.width < 1 || r.size.height < 1) return;
+    CGFloat winW = win.bounds.size.width, winH = win.bounds.size.height;
+    CGFloat safeBottom = win.safeAreaInsets.bottom;
+    CGFloat fullScale = MIN(MAX(winW / r.size.width, 1.0), 1.6);
+    CGFloat sx = 1.0 + (fullScale - 1.0) * p;
+    CGFloat dx = (winW / 2.0 - CGRectGetMidX(r)) * p;
+    CGFloat dy = MAX(0, (winH - safeBottom) - CGRectGetMaxY(r)) * p;
+
+    if (!objc_getAssociatedObject(bar, kYMDockRadiusKey))
+        objc_setAssociatedObject(bar, kYMDockRadiusKey, @(cv.layer.cornerRadius), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    CGFloat baseRadius = [objc_getAssociatedObject(bar, kYMDockRadiusKey) doubleValue];
+    cv.layer.cornerRadius = baseRadius * (1.0 - p);
+    cv.transform = CGAffineTransformConcat(CGAffineTransformMakeScale(sx, 1.0), CGAffineTransformMakeTranslation(dx, dy));
+    // keep icons/labels undistorted while the container spreads
+    for (UIView *item in bar.itemViews) item.transform = CGAffineTransformMakeScale(1.0 / sx, 1.0);
+
+    // fill the home-indicator area like the legacy bar does
+    UIView *host = bar.superview;
+    if (host && safeBottom > 0) {
+        if (!backdrop) {
+            backdrop = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterial]];
+            backdrop.userInteractionEnabled = NO;
+            objc_setAssociatedObject(bar, kYMDockBackdropKey, backdrop, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (backdrop.superview != host) [host insertSubview:backdrop belowSubview:bar];
+        CGPoint origin = [host convertPoint:CGPointMake(0, winH - safeBottom) fromView:nil];
+        backdrop.frame = CGRectMake(0, origin.y - 1, host.bounds.size.width, safeBottom + 1 + 200);
+        backdrop.alpha = p;
+    }
+}
+
+static void YMSetBarDocked(BOOL docked) {
+    YTFloatingPivotBarView *bar = gYMFloatBar;
+    if (!bar) return;
+    CGFloat target = docked ? 1.0 : 0.0;
+    if (gYMDock == target) return;
+    [UIView animateWithDuration:0.4 delay:0 usingSpringWithDamping:0.88 initialSpringVelocity:0.0
+                        options:(UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction)
+                     animations:^{
+        gYMDock = target;
+        [bar setNeedsLayout];
+        [bar layoutIfNeeded];
+    } completion:nil];
+}
+
+%hook YTFloatingPivotBarView
+- (void)layoutSubviews {
+    BOOL touched = YMHybridBar() || gYMDock > 0;
+    UIView *cv = (touched && [self respondsToSelector:@selector(contentView)]) ? self.contentView : nil;
+    // let YouTube lay out with an untouched capsule, then re-apply the dock transform
+    if (cv) {
+        cv.transform = CGAffineTransformIdentity;
+        for (UIView *item in self.itemViews) item.transform = CGAffineTransformIdentity;
+    }
+    %orig;
+    gYMFloatBar = self;
+    if (touched) YMApplyDock(self, YMHybridBar() ? gYMDock : 0);
+}
+%end
+
+%hook YTScrollableNavigationController
+- (void)updatePivotBarVisibilityForScrollView:(id)scrollView contentOffsetY:(CGFloat)y isAtBottom:(BOOL)atBottom {
+    BOOL prev = gYMInScrollPivotUpdate;
+    gYMInScrollPivotUpdate = YMHybridBar() && gYMFloatBar != nil;
+    %orig;
+    gYMInScrollPivotUpdate = prev;
+}
+%end
+
+%hook YTAppView
+- (void)hidePivotBar {
+    if (gYMInScrollPivotUpdate) { YMSetBarDocked(YES); return; }
+    %orig;
+}
+- (void)showPivotBar {
+    if (gYMInScrollPivotUpdate) { YMSetBarDocked(NO); return; }
+    %orig;
+    if (YMHybridBar()) YMSetBarDocked(NO);
+}
+%end
+
 // Startup Tab
 static BOOL isTabSelected = NO;
 %hook YTPivotBarViewController
@@ -452,8 +600,9 @@ static BOOL isTabSelected = NO;
 // player was then laid out against the wrong bounds - after minimizing, a playlist
 // page's list sat shifted left with a blank strip on the right.
 %hook YTScrollableNavigationController
-- (BOOL)hidePivotBarOnScroll { return IS_ENABLED(PinTabBar) ? NO : %orig; }
-- (void)setHidePivotBarOnScroll:(BOOL)hide { %orig(IS_ENABLED(PinTabBar) ? NO : hide); }
+// Hybrid tab bar needs YouTube's scroll hide/show calls, so it wins over "Always show tab bar"
+- (BOOL)hidePivotBarOnScroll { return (IS_ENABLED(PinTabBar) && !YMHybridBar()) ? NO : %orig; }
+- (void)setHidePivotBarOnScroll:(BOOL)hide { %orig((IS_ENABLED(PinTabBar) && !YMHybridBar()) ? NO : hide); }
 %end
 
 // Recompute SB overlay safe-area inset whenever YouTube shows or hides the pivot bar
@@ -473,11 +622,14 @@ static BOOL isTabSelected = NO;
 
 %hook YTAppViewControllerImpl
 - (void)hidePivotBar {
+    if (gYMInScrollPivotUpdate) { YMSetBarDocked(YES); return; }
     %orig;
     sbUpdateOverlayInsetForPivotBar();
 }
 - (void)showPivotBar {
+    if (gYMInScrollPivotUpdate) { YMSetBarDocked(NO); return; }
     %orig;
+    if (YMHybridBar()) YMSetBarDocked(NO);
     sbUpdateOverlayInsetForPivotBar();
 }
 %end

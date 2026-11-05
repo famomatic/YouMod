@@ -154,6 +154,7 @@ extern void YMRegisterDefaults(void);
 #define WifiQualityIndex @"YouModWifiQualityIndex"
 #define CellQualityIndex @"YouModCellQualityIndex"
 #define LowPowerQualityIndex @"YouModLowPowerQualityIndex"
+#define FixedQualityIndex @"YouModFixedQualityIndex"
 #define AudioTrack @"YouModAudioTrackSegment"
 #define AudioTrackLangIndex @"YouModAudioTrackLangIndex"
 #define NoDubbedAudioTrack @"YouModNoDubbedAudioTrack"
@@ -260,6 +261,9 @@ extern void YMRegisterDefaults(void);
 #define HideTabIndi @"YouModHideTabIndicators"
 #define HideTabLabels @"YouModHideTabLabels"
 #define UseFrostedTabBar @"YouModUseFrostedTabBar"
+// 0 = YouTube decides, 1 = floating, 2 = legacy (fixed), 3 = hybrid (floating that docks while scrolling)
+#define TabBarStyle @"YouModTabBarStyle"
+#define FloatBarLabels @"YouModFloatBarLabels"
 // Miscellaneous
 #define BackgroundPlayback @"YouModEnablesBackgroundPlayback"
 #define DisablesShortsPiP @"YouModTrytoDisablesShortsPiP"
@@ -424,6 +428,12 @@ typedef NS_ENUM(NSUInteger, GestureSection) {
 
 @interface YTPlayabilityResolutionUserActionUIControllerImpl : NSObject
 - (void)confirmAlertDidPressConfirm;
+@end
+
+// 21.44+: the floating tab bar is a separate (Swift) class
+@interface YTFloatingPivotBarView : UIView
+@property (nonatomic, readonly) UIView *contentView;
+@property (nonatomic, readonly) NSArray<UIView *> *itemViews;
 @end
 
 @interface YTPivotBarViewController : UIViewController
@@ -808,6 +818,7 @@ extern UIImage *YouModYTIconImage(NSInteger iconType, BOOL useCustomColor, UICol
 extern NSArray *getAllSystemLanguageTitles();
 extern NSArray *getAllSystemLanguageValues();
 extern UIViewController *YouModTopViewController(UIViewController *root);
+extern void YouModDumpUIHierarchy(UIViewController *presenter, NSTimeInterval delay);
 extern BOOL isDarkMode(UIView *view);
 extern BOOL isPad();
 

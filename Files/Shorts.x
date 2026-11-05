@@ -1,4 +1,5 @@
 #import "Headers.h"
+#import <objc/runtime.h>
 
 // Enables shorts quality - works best with YTClassicVideoQuality
 %hook YTHotConfig
@@ -112,7 +113,14 @@ static BOOL isFullscreenEnabled = NO;
             [self removeFromSuperview];
         }
     } else if (IS_ENABLED(HideShortsSubbar)) {
-        UIView *subbar = [self valueForKey:@"_pausedStateCarouselView"];
+        // 21.40: _pausedStateCarouselView, 21.44+: _accessoryView (KVC on a missing ivar throws)
+        UIView *subbar = nil;
+        for (NSString *key in @[@"_accessoryView", @"_pausedStateCarouselView"]) {
+            if (class_getInstanceVariable([self class], key.UTF8String)) {
+                id v = [self valueForKey:key];
+                if ([v isKindOfClass:[UIView class]]) { subbar = v; break; }
+            }
+        }
         if (subbar && subbar.superview) {
             [subbar removeFromSuperview];
         }

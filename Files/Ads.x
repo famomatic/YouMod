@@ -213,6 +213,19 @@ static NSMutableArray <YTIItemSectionRenderer *> *filteredArray(NSArray <YTIItem
     id temp = nil;
     %orig(temp);
 }
+// 21.44+
+- (void)decorateContext:(id)context serviceType:(NSInteger)serviceType {
+    id temp = nil;
+    %orig(temp, serviceType);
+}
+%end
+
+// 21.44+: decorateContext: gained a serviceType argument and the protocol class got an Impl suffix
+%hook YTAdsInnerTubeContextDecoratorImpl
+- (void)decorateContext:(id)context serviceType:(NSInteger)serviceType {
+    id temp = nil;
+    %orig(temp, serviceType);
+}
 %end
 
 // No ads coordinator at all also skipped what one does for an ad-free video: on
