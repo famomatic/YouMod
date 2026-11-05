@@ -592,54 +592,52 @@ static CGFloat YouModSpeedForHoldIndex(NSInteger index) {
     // Return early if there aren't any video formats available
     // eg. Voice comments and others
     if (!videoFormats || videoFormats.count == 0) return;
-    NSInteger kQualityIndex = isWiFiConnected() ? INTFORVAL(WifiQualityIndex) : INTFORVAL(CellQualityIndex);
-    if ([NSProcessInfo processInfo].lowPowerModeEnabled) kQualityIndex = INTFORVAL(LowPowerQualityIndex);
+    // A fixed quality overrides the per-network settings
+    NSInteger kQualityIndex = INTFORVAL(FixedQualityIndex);
+    if (kQualityIndex == 0) {
+        kQualityIndex = isWiFiConnected() ? INTFORVAL(WifiQualityIndex) : INTFORVAL(CellQualityIndex);
+        if ([NSProcessInfo processInfo].lowPowerModeEnabled) kQualityIndex = INTFORVAL(LowPowerQualityIndex);
+    }
     if (kQualityIndex == 0) return;
 
-    NSString *bestQualityLabel;
-    int highestResolution = 0;
+    // Height of a format: "1080p60" -> 1080, falls back to the single dimension resolution
+    NSInteger (^heightOf)(MLFormat *) = ^NSInteger(MLFormat *format) {
+        NSInteger h = [format.qualityLabel integerValue];
+        return h > 0 ? h : (NSInteger)format.singleDimensionResolution;
+    };
+
+    NSString *bestQualityLabel = nil;
+    NSInteger highestResolution = 0;
     for (MLFormat *format in videoFormats) {
-        int reso = format.singleDimensionResolution;
+        NSInteger reso = heightOf(format);
         if (reso > highestResolution) {
             highestResolution = reso;
             bestQualityLabel = format.qualityLabel;
         }
     }
 
-    NSArray *qualityLabels = @[@"Default", bestQualityLabel, @"2160p", @"1440p", @"1080p", @"720p", @"480p", @"360p", @"240p", @"144p"];
+    NSArray *qualityLabels = @[@"Default", bestQualityLabel ?: @"", @"2160p", @"1440p", @"1080p", @"720p", @"480p", @"360p", @"240p", @"144p"];
+    if (kQualityIndex < 0 || kQualityIndex >= (NSInteger)qualityLabels.count) return;
     NSString *qualityLabel = qualityLabels[kQualityIndex];
+    if (qualityLabel.length == 0) return;
 
-    if (![qualityLabel isEqualToString:bestQualityLabel]) {
-        BOOL exactMatch = NO;
-        NSString *closestQualityLabel = qualityLabel;
-
+    // Requested quality isn't offered -> use the next lower one (or the lowest available if everything is higher)
+    NSInteger target = [qualityLabel integerValue];
+    MLFormat *chosen = nil;
+    for (MLFormat *format in videoFormats) {
+        NSInteger h = heightOf(format);
+        if (h <= 0 || h > target) continue;
+        NSInteger chosenH = chosen ? heightOf(chosen) : 0;
+        if (h > chosenH || (h == chosenH && [format.qualityLabel isEqualToString:qualityLabel])) chosen = format;
+    }
+    if (!chosen) {
         for (MLFormat *format in videoFormats) {
-            if ([format.qualityLabel isEqualToString:qualityLabel]) {
-                exactMatch = YES;
-                break;
-            }
-        }
-
-        if (!exactMatch) {
-            NSInteger bestQualityDifference = NSIntegerMax;
-
-            for (MLFormat *format in videoFormats) {
-                NSArray *formatСomponents = [format.qualityLabel componentsSeparatedByString:@"p"];
-                NSArray *targetComponents = [qualityLabel componentsSeparatedByString:@"p"];
-                if (formatСomponents.count == 2) {
-                    NSInteger formatQuality = [formatСomponents.firstObject integerValue];
-                    NSInteger targetQuality = [targetComponents.firstObject integerValue];
-                    NSInteger difference = labs(formatQuality - targetQuality);
-                    if (difference < bestQualityDifference) {
-                        bestQualityDifference = difference;
-                        closestQualityLabel = format.qualityLabel;
-                    }
-                }
-            }
-
-            qualityLabel = closestQualityLabel;
+            NSInteger h = heightOf(format);
+            if (h <= 0) continue;
+            if (!chosen || h < heightOf(chosen)) chosen = format;
         }
     }
+    if (chosen.qualityLabel.length) qualityLabel = chosen.qualityLabel;
 
     MLQuickMenuVideoQualitySettingFormatConstraint *fc = [%c(MLQuickMenuVideoQualitySettingFormatConstraint) alloc];
     if ([fc respondsToSelector:@selector(initWithVideoQualitySetting:formatSelectionReason:qualityLabel:resolutionCap:)]) {

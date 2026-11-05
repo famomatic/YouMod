@@ -279,6 +279,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
     // Section 5
     // Player
     NSArray<YMSettingsItem *> *playerItems = @[
+            YMPicker(YMLOC(@"QUALITY_FIXED"), YMLOC(@"QUALITY_FIXED_DESC"), FixedQualityIndex, (@[YMLOC(@"DEFAULT"), YMLOC(@"BEST"), @"2160p", @"1440p", @"1080p", @"720p", @"480p", @"360p", @"240p", @"144p"]), 0),
             YMPicker(YMLOC(@"QUALITY_WIFI"), YMLOC(@"QUALITY_WIFI_DESC"), WifiQualityIndex, (@[YMLOC(@"DEFAULT"), YMLOC(@"BEST"), @"2160p", @"1440p", @"1080p", @"720p", @"480p", @"360p", @"240p", @"144p"]), 0),
             YMPicker(YMLOC(@"QUALITY_CELLULAR"), YMLOC(@"QUALITY_CELLULAR_DESC"), CellQualityIndex, (@[YMLOC(@"DEFAULT"), YMLOC(@"BEST"), @"2160p", @"1440p", @"1080p", @"720p", @"480p", @"360p", @"240p", @"144p"]), 0),
             YMPicker(YMLOC(@"QUALITY_LOW_POWER"), YMLOC(@"QUALITY_LOW_POWER_DESC"), LowPowerQualityIndex, (@[YMLOC(@"DEFAULT"), YMLOC(@"BEST"), @"2160p", @"1440p", @"1080p", @"720p", @"480p", @"360p", @"240p", @"144p"]), 0),
@@ -449,6 +450,8 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
 
         YMPushSubSettings(YMLOC(@"TABBAR"), @[
             YMImageSegment(YMLOC(@"DEFAULT_TAB"), DefaultTab, defaultTabImages, 0),
+            YMPicker(YMLOC(@"TAB_BAR_STYLE"), YMLOC(@"TAB_BAR_STYLE_DESC"), TabBarStyle, (@[YMLOC(@"DEFAULT"), YMLOC(@"TAB_STYLE_FLOATING"), YMLOC(@"TAB_STYLE_LEGACY"), YMLOC(@"TAB_STYLE_HYBRID")]), 0),
+            [YMToggle(YMLOC(@"FLOAT_BAR_LABELS"), YMLOC(@"FLOAT_BAR_LABELS_DESC"), FloatBarLabels) visibleWhenKey:TabBarStyle isNotEqualTo:2],
             YMTextSegment(YMLOC(@"FORSTED_TAB_BAR"), UseFrostedTabBar, (@[YMLOC(@"DEFAULT"),YMLOC(@"ENABLED"), YMLOC(@"DISABLED")]), 0),
             YMToggle(YMLOC(@"HIDE_TAB_INDI"), YMLOC(@"HIDE_TAB_INDI_DESC"), HideTabIndi),
             YMToggle(YMLOC(@"HIDE_TAB_LABELS"), YMLOC(@"HIDE_TAB_LABELS_DESC"), HideTabLabels),
@@ -610,6 +613,13 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
                 });
             }),
             YMToggle(YMLOC(@"AUTO_CLEARCACHE"), YMLOC(@"AUTO_CLEARCACHE_DESC"), AutoClearCache),
+            YMHeader(YMLOC(@"UI_DUMP_HEADER")),
+            YMAction(YMLOC(@"UI_DUMP_DELAYED"), YMLOC(@"UI_DUMP_DELAYED_DESC"), ^(UIViewController *vc) {
+                YouModDumpUIHierarchy(vc, 10);
+            }),
+            YMAction(YMLOC(@"UI_DUMP"), YMLOC(@"UI_DUMP_DESC"), ^(UIViewController *vc) {
+                YouModDumpUIHierarchy(vc, 0);
+            }),
         ], settingsViewController, [self parentResponder]);
         return YES;
     }];

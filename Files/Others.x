@@ -35,6 +35,12 @@
 - (BOOL)shortsPlayerGlobalConfigEnableReelsPictureInPictureAllowedFromPlayer { return IS_ENABLED(DisablesShortsPiP) ? NO : %orig; }
 %end
 
+// 21.44+: the ColdConfig PiP flags were removed, the Reel experiment config still drives it
+%hook YTReelExperimentConfig
+- (BOOL)reelsPictureInPictureEnabled { return IS_ENABLED(DisablesShortsPiP) ? NO : %orig; }
+- (BOOL)reelsPictureInPictureAllowedFromPlayer { return IS_ENABLED(DisablesShortsPiP) ? NO : %orig; }
+%end
+
 %hook YTReelModel
 - (BOOL)isPiPSupported { return IS_ENABLED(DisablesShortsPiP) ? NO : %orig; }
 %end
