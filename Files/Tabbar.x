@@ -397,23 +397,48 @@ static BOOL gYMInScrollPivotUpdate = NO;
 static const void *kYMDockBackdropKey = &kYMDockBackdropKey;
 static const void *kYMDockRadiusKey = &kYMDockRadiusKey;
 
-static void YMApplyDock(YTFloatingPivotBarView *bar, CGFloat p) {
-    UIView *cv = [bar respondsToSelector:@selector(contentView)] ? bar.contentView : nil;
-    UIWindow *win = bar.window;
-    if (!cv || !win || !cv.superview) return;
+// Corner radius lerp: remember YouTube's own radius (re-read whenever YouTube changes it) per view
+static const void *kYMDockLastKey = &kYMDockLastKey;
+static CGFloat YMBaseRadius(UIView *v) {
+    NSNumber *base = objc_getAssociatedObject(v, kYMDockRadiusKey);
+    NSNumber *last = objc_getAssociatedObject(v, kYMDockLastKey);
+    CGFloat cur = v.layer.cornerRadius;
+    if (!base || !last || fabs(cur - last.doubleValue) > 0.01) {
+        base = @(cur);
+        objc_setAssociatedObject(v, kYMDockRadiusKey, base, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return base.doubleValue;
+}
 
+static void YMSetRadius(UIView *v, CGFloat factor) {
+    CGFloat base = YMBaseRadius(v);
+    if (base <= 0) return;
+    CGFloat r = base * factor;
+    v.layer.cornerRadius = r;
+    objc_setAssociatedObject(v, kYMDockLastKey, @(r), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+// The whole bar view is transformed (it is the capsule: the blur background and contentView are its sibling
+// subviews, so transforming contentView alone only moved the icons). Called with the bar laid out untransformed.
+static void YMApplyDock(YTFloatingPivotBarView *bar, CGFloat p) {
+    UIWindow *win = bar.window;
+    UIView *host = bar.superview;
+    if (!win || !host) return;
+    UIView *cv = [bar respondsToSelector:@selector(contentView)] ? bar.contentView : nil;
     UIVisualEffectView *backdrop = objc_getAssociatedObject(bar, kYMDockBackdropKey);
+
+    NSMutableArray<UIView *> *rounded = [NSMutableArray arrayWithObject:bar];
+    [rounded addObjectsFromArray:bar.subviews];
+
     if (p < 0.001) {
-        cv.transform = CGAffineTransformIdentity;
-        for (UIView *item in bar.itemViews) item.transform = CGAffineTransformIdentity;
-        NSNumber *r = objc_getAssociatedObject(bar, kYMDockRadiusKey);
-        if (r) cv.layer.cornerRadius = r.doubleValue;
+        bar.transform = CGAffineTransformIdentity;
+        for (UIView *v in cv.subviews) v.transform = CGAffineTransformIdentity;
+        for (UIView *v in rounded) YMSetRadius(v, 1.0);
         backdrop.alpha = 0;
         return;
     }
 
-    // Measure the capsule as YouTube laid it out (transform is identity here)
-    CGRect r = [cv.superview convertRect:cv.frame toView:nil];
+    CGRect r = [host convertRect:bar.frame toView:nil];   // bar is untransformed here
     if (r.size.width < 1 || r.size.height < 1) return;
     CGFloat winW = win.bounds.size.width, winH = win.bounds.size.height;
     CGFloat safeBottom = win.safeAreaInsets.bottom;
@@ -422,17 +447,13 @@ static void YMApplyDock(YTFloatingPivotBarView *bar, CGFloat p) {
     CGFloat dx = (winW / 2.0 - CGRectGetMidX(r)) * p;
     CGFloat dy = MAX(0, (winH - safeBottom) - CGRectGetMaxY(r)) * p;
 
-    if (!objc_getAssociatedObject(bar, kYMDockRadiusKey))
-        objc_setAssociatedObject(bar, kYMDockRadiusKey, @(cv.layer.cornerRadius), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    CGFloat baseRadius = [objc_getAssociatedObject(bar, kYMDockRadiusKey) doubleValue];
-    cv.layer.cornerRadius = baseRadius * (1.0 - p);
-    cv.transform = CGAffineTransformConcat(CGAffineTransformMakeScale(sx, 1.0), CGAffineTransformMakeTranslation(dx, dy));
-    // keep icons/labels undistorted while the container spreads
-    for (UIView *item in bar.itemViews) item.transform = CGAffineTransformMakeScale(1.0 / sx, 1.0);
+    for (UIView *v in rounded) YMSetRadius(v, 1.0 - p);
+    bar.transform = CGAffineTransformConcat(CGAffineTransformMakeScale(sx, 1.0), CGAffineTransformMakeTranslation(dx, dy));
+    // keep icons, labels and the selection pill undistorted while the capsule spreads
+    for (UIView *v in cv.subviews) v.transform = CGAffineTransformMakeScale(1.0 / sx, 1.0);
 
     // fill the home-indicator area like the legacy bar does
-    UIView *host = bar.superview;
-    if (host && safeBottom > 0) {
+    if (safeBottom > 0) {
         if (!backdrop) {
             backdrop = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterial]];
             backdrop.userInteractionEnabled = NO;
@@ -464,9 +485,9 @@ static void YMSetBarDocked(BOOL docked) {
     BOOL touched = YMHybridBar() || gYMDock > 0;
     UIView *cv = (touched && [self respondsToSelector:@selector(contentView)]) ? self.contentView : nil;
     // let YouTube lay out with an untouched capsule, then re-apply the dock transform
-    if (cv) {
-        cv.transform = CGAffineTransformIdentity;
-        for (UIView *item in self.itemViews) item.transform = CGAffineTransformIdentity;
+    if (touched) {
+        self.transform = CGAffineTransformIdentity;
+        for (UIView *v in cv.subviews) v.transform = CGAffineTransformIdentity;
     }
     %orig;
     gYMFloatBar = self;
