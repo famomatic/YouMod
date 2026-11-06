@@ -459,6 +459,10 @@ static void YMApplyDock(YTFloatingPivotBarView *bar, CGFloat p) {
             backdrop.userInteractionEnabled = NO;
             objc_setAssociatedObject(bar, kYMDockBackdropKey, backdrop, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
+        // OLED theme: a blur over black reads grey, so paint the area solid black instead
+        BOOL oled = IS_ENABLED(OLEDTheme) && win.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
+        backdrop.effect = oled ? nil : [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterial];
+        backdrop.backgroundColor = oled ? [UIColor blackColor] : nil;
         if (backdrop.superview != host) [host insertSubview:backdrop belowSubview:bar];
         CGPoint origin = [host convertPoint:CGPointMake(0, winH - safeBottom) fromView:nil];
         backdrop.frame = CGRectMake(0, origin.y - 1, host.bounds.size.width, safeBottom + 1 + 200);
