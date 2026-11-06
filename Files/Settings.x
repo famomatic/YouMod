@@ -503,6 +503,23 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
     tabgroup.settingIcon = icon5;
     [sectionItems addObject:tabgroup];
 
+    YTSettingsSectionItem *hometabs = [YTSettingsSectionItemClass itemWithTitle:YMLOC(@"HOME_TABS") accessibilityIdentifier:nil detailTextBlock:nil selectBlock:^BOOL (YTSettingsCell *cell, NSUInteger arg1) {
+        YMPushSubSettings(YMLOC(@"HOME_TABS"), @[
+            YMPicker(YMLOC(@"HOME_TABS_STYLE"), YMLOC(@"HOME_TABS_STYLE_DESC"), HomeTabsStyle, (@[YMLOC(@"DEFAULT"), YMLOC(@"HOME_TABS_UNDERLINE"), YMLOC(@"HOME_TABS_PILL")]), 0),
+            YMHeader(YMLOC(@"HOME_TABS_SHOW_HEADER")),
+            YMToggle(YMLOC(@"HOME_TAB_HIDE_SUBS"), YMLOC(@"HOME_TAB_HIDE_DESC"), HomeTabHideSubs),
+            YMToggle(YMLOC(@"HOME_TAB_HIDE_MUSIC"), YMLOC(@"HOME_TAB_HIDE_DESC"), HomeTabHideMusic),
+            YMToggle(YMLOC(@"HOME_TAB_HIDE_LIVE"), YMLOC(@"HOME_TAB_HIDE_DESC"), HomeTabHideLive),
+            YMToggle(YMLOC(@"HOME_TAB_HIDE_MORE"), YMLOC(@"HOME_TAB_HIDE_DESC"), HomeTabHideMore),
+            YMToggle(YMLOC(@"HOME_TAB_HIDE_OTHERS"), YMLOC(@"HOME_TAB_HIDE_OTHERS_DESC"), HomeTabHideOthers),
+        ], settingsViewController, [self parentResponder]);
+        return YES;
+    }];
+    YTIIcon *iconHT = [%c(YTIIcon) new];
+    iconHT.iconType = 65;
+    hometabs.settingIcon = iconHT;
+    [sectionItems addObject:hometabs];
+
     // Section 8
     // Miscellaneous
     NSArray<YMSettingsItem *> *miscItems = @[

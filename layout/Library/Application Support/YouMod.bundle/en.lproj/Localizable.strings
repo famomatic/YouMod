@@ -732,3 +732,16 @@
 "UI_DUMP_DELAYED" = "Dump UI in 10 seconds";
 "UI_DUMP_DELAYED_DESC" = "Close settings and open the screen you want to inspect (e.g. a paused Short). The dump is taken after 10 seconds.";
 "UI_DUMP_DELAYED_NOTICE" = "The UI will be dumped in %d seconds. Close settings and open the screen you want to inspect.";
+"HOME_TABS" = "Home top tabs";
+"HOME_TABS_STYLE" = "Top tab style";
+"HOME_TABS_STYLE_DESC" = "Default follows YouTube. Underline is the classic tab bar; Pill is the new capsule-style tabs (experimental). Restart the app after changing.";
+"HOME_TABS_UNDERLINE" = "Underline";
+"HOME_TABS_PILL" = "Pill (experimental)";
+"HOME_TABS_SHOW_HEADER" = "Hide tabs";
+"HOME_TAB_HIDE_SUBS" = "Hide Subscriptions tab";
+"HOME_TAB_HIDE_MUSIC" = "Hide Music tab";
+"HOME_TAB_HIDE_LIVE" = "Hide Live tab";
+"HOME_TAB_HIDE_MORE" = "Hide More tab";
+"HOME_TAB_HIDE_DESC" = "Removes this tab from the top of the Home screen. Takes effect when Home reloads.";
+"HOME_TAB_HIDE_OTHERS" = "Hide all other tabs";
+"HOME_TAB_HIDE_OTHERS_DESC" = "Keeps only Home and removes every other top tab, including ones YouMod has no switch for.";

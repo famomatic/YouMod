@@ -732,3 +732,16 @@
 "UI_DUMP_DELAYED" = "10초 후 UI 덤프";
 "UI_DUMP_DELAYED_DESC" = "설정을 닫고 확인할 화면(예: 일시정지한 Shorts)을 연 상태로 기다리세요. 10초 뒤에 덤프됩니다.";
 "UI_DUMP_DELAYED_NOTICE" = "%d초 뒤에 UI를 덤프합니다. 설정을 닫고 확인할 화면을 열어 두세요.";
+"HOME_TABS" = "홈 상단 탭";
+"HOME_TABS_STYLE" = "상단 탭 스타일";
+"HOME_TABS_STYLE_DESC" = "기본은 YouTube 설정을 따릅니다. 밑줄은 기존 탭 바, 알약은 새 캡슐형 탭(실험적)입니다. 바꾼 뒤 앱을 다시 시작하세요.";
+"HOME_TABS_UNDERLINE" = "밑줄";
+"HOME_TABS_PILL" = "알약 (실험적)";
+"HOME_TABS_SHOW_HEADER" = "탭 숨기기";
+"HOME_TAB_HIDE_SUBS" = "구독 탭 숨기기";
+"HOME_TAB_HIDE_MUSIC" = "음악 탭 숨기기";
+"HOME_TAB_HIDE_LIVE" = "라이브 탭 숨기기";
+"HOME_TAB_HIDE_MORE" = "더보기 탭 숨기기";
+"HOME_TAB_HIDE_DESC" = "홈 화면 상단에서 이 탭을 제거합니다. 홈이 다시 불러와질 때 적용됩니다.";
+"HOME_TAB_HIDE_OTHERS" = "나머지 탭 모두 숨기기";
+"HOME_TAB_HIDE_OTHERS_DESC" = "홈만 남기고 다른 모든 상단 탭을 제거합니다. YouMod에 스위치가 없는 탭도 포함됩니다.";

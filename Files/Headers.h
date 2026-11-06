@@ -264,6 +264,12 @@ extern void YMRegisterDefaults(void);
 // 0 = YouTube decides, 1 = floating, 2 = legacy (fixed), 3 = hybrid (floating that docks while scrolling)
 #define TabBarStyle @"YouModTabBarStyle"
 #define FloatBarLabels @"YouModFloatBarLabels"
+#define HomeTabsStyle @"YouModHomeTabsStyle"
+#define HomeTabHideSubs @"YouModHomeTabHideSubs"
+#define HomeTabHideMusic @"YouModHomeTabHideMusic"
+#define HomeTabHideLive @"YouModHomeTabHideLive"
+#define HomeTabHideMore @"YouModHomeTabHideMore"
+#define HomeTabHideOthers @"YouModHomeTabHideOthers"
 // Miscellaneous
 #define BackgroundPlayback @"YouModEnablesBackgroundPlayback"
 #define DisablesShortsPiP @"YouModTrytoDisablesShortsPiP"
