@@ -96,6 +96,11 @@ static NSInteger ymIconTypeForTabID(NSString *tabID) {
     if ([tabID isEqualToString:@"fashion"]) return 16;
     if ([tabID isEqualToString:@"learning"]) return 17;
     if ([tabID isEqualToString:@"downloads"]) return YMDownloadsIconType;
+    // YouTube's own icon types, for core tabs the server no longer sends (21.44 moved Subscriptions into the Home tabs)
+    if ([tabID isEqualToString:@"home"]) return 65;
+    if ([tabID isEqualToString:@"shorts"]) return 769;
+    if ([tabID isEqualToString:@"subscriptions"]) return 66;
+    if ([tabID isEqualToString:@"library"]) return 61;
     return 0;
 }
 
@@ -118,6 +123,10 @@ static NSString *ymTitleForTabID(NSString *tabID) {
     if ([tabID isEqualToString:@"fashion"]) return LOC(@"FASHION_TAB");
     if ([tabID isEqualToString:@"learning"]) return LOC(@"LEARNING_TAB");
     if ([tabID isEqualToString:@"downloads"]) return LOC(@"DOWNLOADS_TAB");
+    if ([tabID isEqualToString:@"home"]) return LOC(@"HOME_TAB");
+    if ([tabID isEqualToString:@"shorts"]) return LOC(@"SHORTS_TAB");
+    if ([tabID isEqualToString:@"subscriptions"]) return LOC(@"SUBSCRIPTIONS_TAB");
+    if ([tabID isEqualToString:@"library"]) return LOC(@"LIBRARY_TAB");
     return nil;
 }
 
@@ -299,6 +308,7 @@ static void YMOpenLinkFromClipboard(UIViewController *presentingVC, BOOL isRunti
     }
 }
 
+static void YMUpdateFloatBarLabel(YTPivotBarItemView *item);
 static BOOL isGestureRegistered = NO;
 // Hide Tab Labels + long-press on the first tab to open Manage Tabs
 %hook YTPivotBarItemView
@@ -327,6 +337,7 @@ static BOOL isGestureRegistered = NO;
 // normal (now-collapsed) spot below it. Re-assert on every layout too.
 - (void)layoutSubviews {
     %orig;
+    YMUpdateFloatBarLabel(self);
     if (IS_ENABLED(HideTabLabels) && self.navigationButton.titleLabel.text.length > 0) {
         [self.navigationButton setTitle:@"" forState:UIControlStateNormal];
         self.navigationButton.titleLabel.text = @"";
@@ -366,27 +377,61 @@ static BOOL isGestureRegistered = NO;
 //   YTFloatingPivotBarView vs the legacy YTPivotBarView, so it must be decided before the tab bar loads
 //   (a style change needs an app restart).  +isIconsOnly drives the label of the floating bar items.
 // ---------------------------------------------------------------------------
-static BOOL YMHybridBar(void) { return INTFORVAL(TabBarStyle) == 3; }
+// Read once: these are queried from hot paths (layout passes, YouTube's config getters) and a style
+// change needs a restart anyway.
+static NSInteger YMTabBarStyle(void) {
+    static NSInteger style;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ style = INTFORVAL(TabBarStyle); });
+    return style;
+}
+static BOOL YMHybridBar(void) { return YMTabBarStyle() == 3; }
 
 %hook YTFloatingBarExperiment
 + (BOOL)enableFloatingBottomBar {
-    switch (INTFORVAL(TabBarStyle)) {
+    switch (YMTabBarStyle()) {
         case 1: case 3: return YES;
         case 2: return NO;
         default: return %orig;
     }
 }
-+ (BOOL)isIconsOnly { return IS_ENABLED(FloatBarLabels) ? NO : %orig; }
 %end
 
 %hook YTColdConfig
-- (BOOL)mainAppCoreClientEnableIconOnlyDefaultPivotBar { return IS_ENABLED(FloatBarLabels) ? NO : %orig; }
-- (BOOL)mainAppCoreClientEnableIconOnlyOfflinePivotBar { return IS_ENABLED(FloatBarLabels) ? NO : %orig; }
-- (BOOL)mainAppCoreClientEnableIconOnlyBottomNav { return IS_ENABLED(FloatBarLabels) ? NO : %orig; }
 // Hybrid relies on YouTube's scroll-driven hide/show calls
 - (BOOL)iosEnableNonStickyPivotBar { return YMHybridBar() ? YES : %orig; }
 - (BOOL)mainAppCoreClientHidePivotBarOnScrollInTabs { return YMHybridBar() ? YES : %orig; }
 %end
+
+// Floating bar labels. YouTube builds the floating bar icon-only whatever the config says, so the label is
+// drawn here: the icon moves up and a small label (the item's accessibility label) goes under it.
+static const void *kYMFloatLabelKey = &kYMFloatLabelKey;
+static void YMUpdateFloatBarLabel(YTPivotBarItemView *item) {
+    UILabel *label = objc_getAssociatedObject(item, kYMFloatLabelKey);
+    UIView *button = item.navigationButton;
+    BOOL floating = item.superview.superview && [item.superview.superview isKindOfClass:%c(YTFloatingPivotBarView)];
+    if (!floating || !IS_ENABLED(FloatBarLabels) || item.bounds.size.width < 1 || !button.accessibilityLabel.length) {
+        label.hidden = YES;
+        button.transform = CGAffineTransformIdentity;
+        return;
+    }
+    if (!label) {
+        label = [UILabel new];
+        label.font = [UIFont systemFontOfSize:10 weight:UIFontWeightMedium];
+        label.textAlignment = NSTextAlignmentCenter;
+        label.userInteractionEnabled = NO;
+        label.adjustsFontSizeToFitWidth = YES;
+        label.minimumScaleFactor = 0.7;
+        objc_setAssociatedObject(item, kYMFloatLabelKey, label, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [item addSubview:label];
+    }
+    label.hidden = NO;
+    label.text = button.accessibilityLabel;
+    label.textColor = UIColor.labelColor;
+    label.frame = CGRectMake(4, item.bounds.size.height - 19, item.bounds.size.width - 8, 13);
+    button.transform = CGAffineTransformMakeTranslation(0, -8);
+    [item bringSubviewToFront:label];
+}
 
 // Hybrid: instead of hiding the floating bar while scrolling down, morph it into a docked (edge to edge) bar
 // and morph it back while scrolling up.  Only the contentView transform is touched, so it does not depend on

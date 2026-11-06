@@ -234,29 +234,6 @@ static BOOL OLEDKeyboardIsDarkMode(UIView *view) {
     return view.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
 }
 
-// The keyboard's key caps and labels are drawn with a vibrancy effect inside
-// UIKBVisualEffectView, and vibrancy only renders while its parent blur exists.
-// OledKeyboard's approach - setting that view's backgroundEffects to nil - therefore
-// made the keys vanish on current iOS: a solid black panel that still accepted input,
-// with only the separately drawn prediction bar visible. Instead, the effects are left
-// alone and the keyboard's outermost host view (behind every key) is painted black,
-// so the keyboard's own blur samples black and renders near-black with keys intact.
-static void YMOLEDPaintKeyboardHosts(void) {
-    if (!YMAppIsDark()) return;
-    Class hostClass = NSClassFromString(@"UIInputSetHostView");
-    if (!hostClass) return;
-    for (UIWindow *window in UIApplication.sharedApplication.windows) {
-        NSString *name = NSStringFromClass(window.class);
-        if (![name containsString:@"Keyboard"] && ![name containsString:@"TextEffects"]) continue;
-        // UIInputSetContainerView -> UIInputSetHostView: shallow, containers only.
-        for (UIView *container in window.subviews) {
-            for (UIView *host in container.subviews) {
-                if ([host isKindOfClass:hostClass]) host.backgroundColor = [UIColor blackColor];
-            }
-        }
-    }
-}
-
 %group OLEDKeyboard
 %hook YTPageStyleControllerImpl
 - (NSInteger)pageStyle {
@@ -279,23 +256,6 @@ static void YMOLEDPaintKeyboardHosts(void) {
 %hook UITextView
 - (UIKeyboardAppearance)keyboardAppearance {
     return YMAppIsDark() ? UIKeyboardAppearanceDark : %orig;
-}
-%end
-
-%hook UIKeyboard
-- (void)displayLayer:(id)arg1 {
-    %orig;
-    self.backgroundColor = OLEDKeyboardIsDarkMode(self) ? [UIColor blackColor] : [UIColor clearColor];
-}
-%end
-
-%hook UIPredictionViewController
-- (id)_currentTextSuggestions {
-    UIKeyboard *keyboard = [%c(UIKeyboard) activeKeyboard];
-    UIColor *color = OLEDKeyboardIsDarkMode(keyboard) ? [UIColor blackColor] : [UIColor clearColor];
-    [self.view setBackgroundColor:color];
-    keyboard.backgroundColor = color;
-    return %orig;
 }
 %end
 
@@ -325,11 +285,6 @@ static void YMOLEDPaintKeyboardHosts(void) {
     }
     if (IS_ENABLED(OLEDKeyboard)) {
         %init(OLEDKeyboard);
-        NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
-        for (NSNotificationName name in @[UIKeyboardWillShowNotification, UIKeyboardDidShowNotification, UIKeyboardDidChangeFrameNotification]) {
-            [center addObserverForName:name object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
-                YMOLEDPaintKeyboardHosts();
-            }];
-        }
+        // iOS 27 draws the keys in a remote process: only the in-app dock/inputs are painted.
     }
 }
