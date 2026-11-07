@@ -411,8 +411,8 @@ static void YMUpdateFloatBarLabel(YTPivotBarItemView *item) {
     UIView *button = item.navigationButton;
     BOOL floating = item.superview.superview && [item.superview.superview isKindOfClass:%c(YTFloatingPivotBarView)];
     if (!floating || !IS_ENABLED(FloatBarLabels) || item.bounds.size.width < 1 || !button.accessibilityLabel.length) {
-        label.hidden = YES;
-        button.transform = CGAffineTransformIdentity;
+        if (label && !label.hidden) label.hidden = YES;
+        if (label && !CGAffineTransformIsIdentity(button.transform)) button.transform = CGAffineTransformIdentity;
         return;
     }
     if (!label) {
@@ -426,10 +426,11 @@ static void YMUpdateFloatBarLabel(YTPivotBarItemView *item) {
         [item addSubview:label];
     }
     label.hidden = NO;
-    label.text = button.accessibilityLabel;
-    label.textColor = UIColor.labelColor;
-    label.frame = CGRectMake(4, item.bounds.size.height - 19, item.bounds.size.width - 8, 13);
-    button.transform = CGAffineTransformMakeTranslation(0, -8);
+    if (![label.text isEqualToString:button.accessibilityLabel]) label.text = button.accessibilityLabel;
+    CGRect lf = CGRectMake(4, item.bounds.size.height - 19, item.bounds.size.width - 8, 13);
+    if (!CGRectEqualToRect(label.frame, lf)) label.frame = lf;
+    CGAffineTransform up = CGAffineTransformMakeTranslation(0, -8);
+    if (!CGAffineTransformEqualToTransform(button.transform, up)) button.transform = up;
     [item bringSubviewToFront:label];
 }
 
@@ -476,14 +477,17 @@ static void YMApplyDock(YTFloatingPivotBarView *bar, CGFloat p) {
     [rounded addObjectsFromArray:bar.subviews];
 
     if (p < 0.001) {
-        bar.transform = CGAffineTransformIdentity;
-        for (UIView *v in cv.subviews) v.transform = CGAffineTransformIdentity;
+        if (!CGAffineTransformIsIdentity(bar.transform)) bar.transform = CGAffineTransformIdentity;
+        for (UIView *v in cv.subviews) if (!CGAffineTransformIsIdentity(v.transform)) v.transform = CGAffineTransformIdentity;
         for (UIView *v in rounded) YMSetRadius(v, 1.0);
         backdrop.alpha = 0;
         return;
     }
 
-    CGRect r = [host convertRect:bar.frame toView:nil];   // bar is untransformed here
+    // bounds + center are not affected by the bar's own transform, so no need to reset it before measuring
+    CGRect own = CGRectMake(bar.center.x - bar.bounds.size.width / 2.0, bar.center.y - bar.bounds.size.height / 2.0,
+                            bar.bounds.size.width, bar.bounds.size.height);
+    CGRect r = [host convertRect:own toView:nil];
     if (r.size.width < 1 || r.size.height < 1) return;
     CGFloat winW = win.bounds.size.width, winH = win.bounds.size.height;
     CGFloat safeBottom = win.safeAreaInsets.bottom;
@@ -493,9 +497,11 @@ static void YMApplyDock(YTFloatingPivotBarView *bar, CGFloat p) {
     CGFloat dy = MAX(0, (winH - safeBottom) - CGRectGetMaxY(r)) * p;
 
     for (UIView *v in rounded) YMSetRadius(v, 1.0 - p);
-    bar.transform = CGAffineTransformConcat(CGAffineTransformMakeScale(sx, 1.0), CGAffineTransformMakeTranslation(dx, dy));
+    CGAffineTransform want = CGAffineTransformConcat(CGAffineTransformMakeScale(sx, 1.0), CGAffineTransformMakeTranslation(dx, dy));
+    if (!CGAffineTransformEqualToTransform(bar.transform, want)) bar.transform = want;
     // keep icons, labels and the selection pill undistorted while the capsule spreads
-    for (UIView *v in cv.subviews) v.transform = CGAffineTransformMakeScale(1.0 / sx, 1.0);
+    CGAffineTransform inv = CGAffineTransformMakeScale(1.0 / sx, 1.0);
+    for (UIView *v in cv.subviews) if (!CGAffineTransformEqualToTransform(v.transform, inv)) v.transform = inv;
 
     // fill the home-indicator area like the legacy bar does
     if (safeBottom > 0) {
@@ -506,11 +512,14 @@ static void YMApplyDock(YTFloatingPivotBarView *bar, CGFloat p) {
         }
         // OLED theme: a blur over black reads grey, so paint the area solid black instead
         BOOL oled = IS_ENABLED(OLEDTheme) && win.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
-        backdrop.effect = oled ? nil : [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterial];
-        backdrop.backgroundColor = oled ? [UIColor blackColor] : nil;
+        if (oled != (backdrop.effect == nil)) {
+            backdrop.effect = oled ? nil : [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterial];
+            backdrop.backgroundColor = oled ? [UIColor blackColor] : nil;
+        }
         if (backdrop.superview != host) [host insertSubview:backdrop belowSubview:bar];
         CGPoint origin = [host convertPoint:CGPointMake(0, winH - safeBottom) fromView:nil];
-        backdrop.frame = CGRectMake(0, origin.y - 1, host.bounds.size.width, safeBottom + 1 + 200);
+        CGRect bf = CGRectMake(0, origin.y - 1, host.bounds.size.width, safeBottom + 1 + 200);
+        if (!CGRectEqualToRect(backdrop.frame, bf)) backdrop.frame = bf;
         backdrop.alpha = p;
     }
 }
@@ -535,12 +544,15 @@ static void YMSetBarDocked(BOOL docked) {
     UIView *cv = (touched && [self respondsToSelector:@selector(contentView)]) ? self.contentView : nil;
     // let YouTube lay out with an untouched capsule, then re-apply the dock transform
     if (touched) {
-        self.transform = CGAffineTransformIdentity;
-        for (UIView *v in cv.subviews) v.transform = CGAffineTransformIdentity;
+        for (UIView *v in cv.subviews) if (!CGAffineTransformIsIdentity(v.transform)) v.transform = CGAffineTransformIdentity;
     }
+    static BOOL inLayout = NO;
+    if (inLayout) { %orig; return; }   // never recurse
+    inLayout = YES;
     %orig;
     gYMFloatBar = self;
     if (touched) YMApplyDock(self, YMHybridBar() ? gYMDock : 0);
+    inLayout = NO;
 }
 %end
 
