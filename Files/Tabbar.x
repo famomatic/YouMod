@@ -1,5 +1,6 @@
 #import "Headers.h"
 #import <objc/runtime.h>
+#import <objc/message.h>
 #import "DownloadQueue.h"
 
 // The Downloads tab is YouMod's own screen, not a YouTube browse page: its pivot
@@ -464,6 +465,16 @@ static void YMSetRadius(UIView *v, CGFloat factor) {
     objc_setAssociatedObject(v, kYMDockLastKey, @(r), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
+// Height of the docked bar: the legacy tab bar's, a little more when labels are drawn under the icons
+static CGFloat YMDockedBarHeight(CGFloat capsuleHeight) {
+    CGFloat h = 0;
+    Class legacy = %c(YTPivotBarView);
+    if ([legacy respondsToSelector:@selector(pivotBarHeight)]) h = ((CGFloat (*)(id, SEL))objc_msgSend)(legacy, @selector(pivotBarHeight));
+    if (h < 40 || h > 80) h = 48;
+    if (IS_ENABLED(FloatBarLabels)) h += 4;
+    return MIN(h, capsuleHeight);
+}
+
 // The whole bar view is transformed (it is the capsule: the blur background and contentView are its sibling
 // subviews, so transforming contentView alone only moved the icons). Called with the bar laid out untransformed.
 static void YMApplyDock(YTFloatingPivotBarView *bar, CGFloat p) {
@@ -493,14 +504,17 @@ static void YMApplyDock(YTFloatingPivotBarView *bar, CGFloat p) {
     CGFloat safeBottom = win.safeAreaInsets.bottom;
     CGFloat fullScale = MIN(MAX(winW / r.size.width, 1.0), 1.6);
     CGFloat sx = 1.0 + (fullScale - 1.0) * p;
+    // docked: as tall as the legacy bar (the capsule is taller), bottom edge on the home-indicator area
+    CGFloat sy = 1.0 + (MIN(YMDockedBarHeight(r.size.height) / r.size.height, 1.0) - 1.0) * p;
     CGFloat dx = (winW / 2.0 - CGRectGetMidX(r)) * p;
-    CGFloat dy = MAX(0, (winH - safeBottom) - CGRectGetMaxY(r)) * p;
+    CGFloat bottom = CGRectGetMaxY(r) + MAX(0, (winH - safeBottom) - CGRectGetMaxY(r)) * p;
+    CGFloat dy = (bottom - r.size.height * sy / 2.0) - CGRectGetMidY(r);
 
     for (UIView *v in rounded) YMSetRadius(v, 1.0 - p);
-    CGAffineTransform want = CGAffineTransformConcat(CGAffineTransformMakeScale(sx, 1.0), CGAffineTransformMakeTranslation(dx, dy));
+    CGAffineTransform want = CGAffineTransformConcat(CGAffineTransformMakeScale(sx, sy), CGAffineTransformMakeTranslation(dx, dy));
     if (!CGAffineTransformEqualToTransform(bar.transform, want)) bar.transform = want;
     // keep icons, labels and the selection pill undistorted while the capsule spreads
-    CGAffineTransform inv = CGAffineTransformMakeScale(1.0 / sx, 1.0);
+    CGAffineTransform inv = CGAffineTransformMakeScale(1.0 / sx, 1.0 / sy);
     for (UIView *v in cv.subviews) if (!CGAffineTransformEqualToTransform(v.transform, inv)) v.transform = inv;
 
     // fill the home-indicator area like the legacy bar does
@@ -565,7 +579,34 @@ static void YMSetBarDocked(BOOL docked) {
 }
 %end
 
+// YTAppView sets the bar's frame (-pivotBarFrame) in -layoutSubviews and -didUpdateExpansionFraction:, then reads
+// it back for the capsule's corner radius. A frame set on a transformed view is undefined: UIKit shrinks the bounds
+// by the transform, so the docked bar came back with the wrong size. Let YouTube work on an untransformed bar and
+// re-apply the dock afterwards.
+static BOOL YMDockActive(YTFloatingPivotBarView *bar) {
+    return bar && (gYMDock > 0 || !CGAffineTransformIsIdentity(bar.transform));
+}
+static void YMClearDockTransform(YTFloatingPivotBarView *bar) {
+    bar.transform = CGAffineTransformIdentity;
+    UIView *cv = [bar respondsToSelector:@selector(contentView)] ? bar.contentView : nil;
+    for (UIView *v in cv.subviews) if (!CGAffineTransformIsIdentity(v.transform)) v.transform = CGAffineTransformIdentity;
+}
+
 %hook YTAppView
+- (void)layoutSubviews {
+    YTFloatingPivotBarView *bar = gYMFloatBar;
+    if (!YMDockActive(bar)) { %orig; return; }
+    YMClearDockTransform(bar);
+    %orig;
+    YMApplyDock(bar, YMHybridBar() ? gYMDock : 0);
+}
+- (void)didUpdateExpansionFraction:(CGFloat)fraction {
+    YTFloatingPivotBarView *bar = gYMFloatBar;
+    if (!YMDockActive(bar)) { %orig; return; }
+    YMClearDockTransform(bar);
+    %orig;
+    YMApplyDock(bar, YMHybridBar() ? gYMDock : 0);
+}
 - (void)hidePivotBar {
     if (gYMInScrollPivotUpdate) { YMSetBarDocked(YES); return; }
     %orig;

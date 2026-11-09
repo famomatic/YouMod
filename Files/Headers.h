@@ -55,6 +55,7 @@
 #import <netinet/in.h>
 #import <YouTubeHeader/YTAppViewControllerImpl.h>
 #import <YouTubeHeader/YTAppViewController.h>
+#import <YouTubeHeader/YTWatchLayerViewController.h>
 #import <YouTubeHeader/YTDefaultSheetController.h>
 #import <YouTubeHeader/YTIFormatStream.h>
 #import <YouTubeHeader/YTIPlayerResponse.h>

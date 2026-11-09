@@ -623,6 +623,22 @@ static void YouModAddEndTime(YTPlayerViewController *self, YTSingleVideoControll
 - (void)showConfirmAlert { IS_ENABLED(HideContentWarning) ? [self confirmAlertDidPressConfirm] : %orig; }
 %end
 
+// Watch page under the status bar. On iPhone the expanded watch page is placed below
+// -[YTWatchLayerViewController statusBarHeight], which is the window's top safe-area inset only while the watch
+// layout controller reports a portrait orientation; for a landscape one it is the side inset - 0 in a portrait
+// window. When that orientation is left stale (after fullscreen/rotation) the player sat at y = 0 under the status
+// bar and notch. A portrait window always needs the top inset.
+%hook YTWatchLayerViewController
+- (CGFloat)statusBarHeight {
+    CGFloat h = %orig;
+    if (h >= 1 || UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) return h;
+    UIWindow *win = self.isViewLoaded ? self.view.window : nil;
+    if (!win || win.bounds.size.height <= win.bounds.size.width) return h;
+    CGFloat top = win.safeAreaInsets.top;
+    return top > h ? top : h;
+}
+%end
+
 // Portrait Fullscreen
 %hook YTWatchViewController
 - (NSUInteger)allowedFullScreenOrientations { return IS_ENABLED(PortFull) ? UIInterfaceOrientationMaskAllButUpsideDown : %orig; }

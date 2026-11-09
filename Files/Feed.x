@@ -1,8 +1,20 @@
 #import "Headers.h"
 
 // Hide Subbar
+// 21.44+: the Home tabs strip (Home/Subs/Music/Live/More) is installed in the same subheader slot as the chip bar
+// (-[YTHeaderContentComboViewController updateCollectionViewInsetsIfNeeded] takes it from the tabs controller's
+// -subheaderView), so only chip bars are blocked; a tab strip always goes through.
+static BOOL YMIsTabsSubheader(UIView *view) {
+    if (![view isKindOfClass:[UIView class]]) return NO;
+    NSString *name = NSStringFromClass(view.class);
+    if ([name containsString:@"Tab"]) return YES;
+    for (UIView *sub in view.subviews)
+        if ([NSStringFromClass(sub.class) containsString:@"TabTitles"]) return YES;
+    return NO;
+}
+
 %hook YTHeaderContentComboView
-- (void)enableSubheaderBarWithView:(id)arg1 { if (!IS_ENABLED(HideSubbar)) %orig; }
+- (void)enableSubheaderBarWithView:(id)arg1 { if (!IS_ENABLED(HideSubbar) || YMIsTabsSubheader(arg1)) %orig; }
 - (void)setFeedHeaderScrollMode:(int)arg1 { 
     int temp = IS_ENABLED(HideSubbar) ? 0 : arg1;
     %orig(temp);
