@@ -147,8 +147,8 @@
 "OLED_KEYBOARD_DESC" = "Make the keyboard uses a pure black (OLED) color for dark theme.";
 
 "NAVBAR" = "Navigation bar";
-"STICKY_NAVBAR" = "Sticky Navigation bar";
-"STICKY_NAVBAR_DESC" = "Pins the Navigation bar so that it remains visible when scrolling down.";
+"STICKY_NAVBAR" = "Pin top bar";
+"STICKY_NAVBAR_DESC" = "Keeps the top bar (logo and Home tabs) from scrolling away.";
 "NAVIGATION_ICON" = "Navigation icon";
 "NAVIGATION_ICON_DESC" = "Change YouTube logo in the navigation bar.";
 "PREMIUM" = "Premium";

@@ -15,6 +15,13 @@ static BOOL YMIsTabsSubheader(UIView *view) {
 
 %hook YTHeaderContentComboView
 - (void)enableSubheaderBarWithView:(id)arg1 { if (!IS_ENABLED(HideSubbar) || YMIsTabsSubheader(arg1)) %orig; }
+// Collapses the subheader to zero height (the startup "hide" of the chip bar). Never for the Home tabs strip:
+// nothing brings it back until the header is rebuilt. Pin top bar keeps any subheader.
+- (void)hideSubHeaderWithOffset:(CGFloat)offset {
+    UIView *sub = [self respondsToSelector:@selector(subheaderView)] ? [self performSelector:@selector(subheaderView)] : nil;
+    if (IS_ENABLED(StickyNavBar) || YMIsTabsSubheader(sub)) return;
+    %orig;
+}
 - (void)setFeedHeaderScrollMode:(int)arg1 { 
     int temp = IS_ENABLED(HideSubbar) ? 0 : arg1;
     %orig(temp);

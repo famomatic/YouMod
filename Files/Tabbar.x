@@ -398,12 +398,6 @@ static BOOL YMHybridBar(void) { return YMTabBarStyle() == 3; }
 }
 %end
 
-%hook YTColdConfig
-// Hybrid relies on YouTube's scroll-driven hide/show calls
-- (BOOL)iosEnableNonStickyPivotBar { return YMHybridBar() ? YES : %orig; }
-- (BOOL)mainAppCoreClientHidePivotBarOnScrollInTabs { return YMHybridBar() ? YES : %orig; }
-%end
-
 // Floating bar labels. YouTube builds the floating bar icon-only whatever the config says, so the label is
 // drawn here: the icon moves up and a small label (the item's accessibility label) goes under it.
 static const void *kYMFloatLabelKey = &kYMFloatLabelKey;
@@ -440,7 +434,6 @@ static void YMUpdateFloatBarLabel(YTPivotBarItemView *item) {
 // how YouTube lays the capsule out.
 static __weak YTFloatingPivotBarView *gYMFloatBar = nil;
 static CGFloat gYMDock = 0;                    // 0 = floating, 1 = docked
-static BOOL gYMInScrollPivotUpdate = NO;
 static const void *kYMDockBackdropKey = &kYMDockBackdropKey;
 static const void *kYMDockRadiusKey = &kYMDockRadiusKey;
 
@@ -570,13 +563,38 @@ static void YMSetBarDocked(BOOL docked) {
 }
 %end
 
-%hook YTScrollableNavigationController
-- (void)updatePivotBarVisibilityForScrollView:(id)scrollView contentOffsetY:(CGFloat)y isAtBottom:(BOOL)atBottom {
-    BOOL prev = gYMInScrollPivotUpdate;
-    gYMInScrollPivotUpdate = YMHybridBar() && gYMFloatBar != nil;
-    %orig;
-    gYMInScrollPivotUpdate = prev;
+// Hybrid: dock while scrolling down, float again while scrolling up or at the top. YouTube's own hide-on-scroll
+// (which an earlier version piggybacked on) only runs when the server marks a page with pivotBarVisibilityType 1
+// under the non-sticky pivot bar experiment, so for most pages it never fired. The scroll direction is tracked
+// here from the feeds' scroll callbacks instead.
+static void YMHybridTrackScroll(id arg) {
+    if (!YMHybridBar() || !gYMFloatBar || ![arg isKindOfClass:[UIScrollView class]]) return;
+    UIScrollView *sv = arg;
+    static __weak UIScrollView *lastView = nil;
+    static CGFloat lastY = 0, travel = 0;
+    CGFloat top = sv.adjustedContentInset.top;
+    CGFloat y = sv.contentOffset.y + top;
+    if (sv != lastView) { lastView = sv; lastY = y; travel = 0; return; }
+    CGFloat d = y - lastY;
+    lastY = y;
+    if (y <= 4) { travel = 0; YMSetBarDocked(NO); return; }
+    // ignore horizontal shelves, short pages and the bounce past the end
+    CGFloat maxY = sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.size.height + top;
+    if (maxY <= 20 || y >= maxY) return;
+    if (!(sv.isDragging || sv.isDecelerating) || d == 0) return;
+    if ((d > 0) != (travel > 0)) travel = 0;
+    travel += d;
+    if (travel > 24) YMSetBarDocked(YES);
+    else if (travel < -24) YMSetBarDocked(NO);
 }
+
+%hook YTScrollableNavigationController
+- (void)scrollViewDidScroll:(id)scrollView { %orig; YMHybridTrackScroll(scrollView); }
+- (void)scrollViewDidScrollOnHome:(id)scrollView { %orig; YMHybridTrackScroll(scrollView); }
+%end
+
+%hook YTInnerTubeCollectionViewController
+- (void)scrollViewDidScroll:(id)scrollView { %orig; YMHybridTrackScroll(scrollView); }
 %end
 
 // YTAppView sets the bar's frame (-pivotBarFrame) in -layoutSubviews and -didUpdateExpansionFraction:, then reads
@@ -607,12 +625,7 @@ static void YMClearDockTransform(YTFloatingPivotBarView *bar) {
     %orig;
     YMApplyDock(bar, YMHybridBar() ? gYMDock : 0);
 }
-- (void)hidePivotBar {
-    if (gYMInScrollPivotUpdate) { YMSetBarDocked(YES); return; }
-    %orig;
-}
 - (void)showPivotBar {
-    if (gYMInScrollPivotUpdate) { YMSetBarDocked(NO); return; }
     %orig;
     if (YMHybridBar()) YMSetBarDocked(NO);
 }
@@ -701,6 +714,9 @@ static BOOL isTabSelected = NO;
     } else if (INTFORVAL(UseFrostedTabBar) == 2) {
         return NO;
     }
+    // Legacy forced while YouTube runs the floating bar: its frosted treatment is made for the capsule and
+    // leaves the legacy bar half see-through over the feed, so the legacy bar is solid unless frosted is chosen.
+    if (YMTabBarStyle() == 2) return NO;
     return %orig;
 }
 %end
@@ -723,9 +739,9 @@ static BOOL isTabSelected = NO;
 // player was then laid out against the wrong bounds - after minimizing, a playlist
 // page's list sat shifted left with a blank strip on the right.
 %hook YTScrollableNavigationController
-// Hybrid tab bar needs YouTube's scroll hide/show calls, so it wins over "Always show tab bar"
-- (BOOL)hidePivotBarOnScroll { return (IS_ENABLED(PinTabBar) && !YMHybridBar()) ? NO : %orig; }
-- (void)setHidePivotBarOnScroll:(BOOL)hide { %orig((IS_ENABLED(PinTabBar) && !YMHybridBar()) ? NO : hide); }
+// Hybrid docks the bar instead of hiding it, so it also turns YouTube's hide-on-scroll off
+- (BOOL)hidePivotBarOnScroll { return (IS_ENABLED(PinTabBar) || YMHybridBar()) ? NO : %orig; }
+- (void)setHidePivotBarOnScroll:(BOOL)hide { %orig((IS_ENABLED(PinTabBar) || YMHybridBar()) ? NO : hide); }
 %end
 
 // Recompute SB overlay safe-area inset whenever YouTube shows or hides the pivot bar
@@ -745,12 +761,10 @@ static BOOL isTabSelected = NO;
 
 %hook YTAppViewControllerImpl
 - (void)hidePivotBar {
-    if (gYMInScrollPivotUpdate) { YMSetBarDocked(YES); return; }
     %orig;
     sbUpdateOverlayInsetForPivotBar();
 }
 - (void)showPivotBar {
-    if (gYMInScrollPivotUpdate) { YMSetBarDocked(NO); return; }
     %orig;
     if (YMHybridBar()) YMSetBarDocked(NO);
     sbUpdateOverlayInsetForPivotBar();

@@ -147,8 +147,8 @@
 "OLED_KEYBOARD_DESC" = "다크 테마에서 키보드가 순수한 검은색(OLED) 색상을 사용하도록 합니다.";
 
 "NAVBAR" = "내비게이션 바";
-"STICKY_NAVBAR" = "내비게이션 바 고정";
-"STICKY_NAVBAR_DESC" = "아래로 스크롤해도 내비게이션 바가 계속 보이도록 고정합니다.";
+"STICKY_NAVBAR" = "상단 바 고정";
+"STICKY_NAVBAR_DESC" = "스크롤해도 상단 바(로고와 홈 탭)가 숨겨지지 않게 고정합니다.";
 "NAVIGATION_ICON" = "내비게이션 아이콘";
 "NAVIGATION_ICON_DESC" = "내비게이션 바의 YouTube 로고를 변경합니다.";
 "PREMIUM" = "Premium";

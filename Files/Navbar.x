@@ -137,12 +137,27 @@
 }
 %end
 
+// Pin top bar: the logo bar and the subheader under it (the Home tabs strip on 21.44+) never scroll away.
+// A positive offset scrolls the header up (hides it), a negative one brings it back. The scrollable navigation
+// controller drives it from the feed's scrolling and YTHeaderContentComboView from its layout; both end in
+// -[YTHeaderView scrollNavHeaderViewWithOffset:], which also moves the adjacent subheader.
+// (Forcing YTHeaderView's stickyNavHeaderEnabled, as this used to, kept only the logo bar: the tabs strip still
+// scrolled away, and the sticky flag skips the step in -canScrollNavHeaderUp that settles an animating subheader,
+// which could leave the tabs strip collapsed until a restart.)
 %hook YTHeaderView
-- (BOOL)stickyNavHeaderEnabled { 
-    if (IS_ENABLED(StickyNavBar)) {
-        [self setStickyNavHeaderEnabled:YES];
-        return YES;
-    }
-    return %orig;
+- (void)scrollNavHeaderViewWithOffset:(CGFloat)offset {
+    if (IS_ENABLED(StickyNavBar) && offset > 0) return;
+    %orig;
+}
+%end
+
+%hook YTScrollableNavigationController
+- (void)scrollNavHeaderViewWithOffset:(CGFloat)offset {
+    if (IS_ENABLED(StickyNavBar) && offset > 0) return;
+    %orig;
+}
+- (void)scrollUpAnimated:(BOOL)animated {
+    if (IS_ENABLED(StickyNavBar)) return;
+    %orig;
 }
 %end
