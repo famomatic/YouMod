@@ -18,7 +18,8 @@ static BOOL YMIsTabsSubheader(UIView *view) {
 // Collapses the subheader to zero height (the startup "hide" of the chip bar). Never for the Home tabs strip:
 // nothing brings it back until the header is rebuilt. Pin top bar keeps any subheader.
 - (void)hideSubHeaderWithOffset:(CGFloat)offset {
-    UIView *sub = [self respondsToSelector:@selector(subheaderView)] ? [self performSelector:@selector(subheaderView)] : nil;
+    id me = (id)self; // forward-declared class
+    UIView *sub = [me respondsToSelector:@selector(subheaderView)] ? [me valueForKey:@"subheaderView"] : nil;
     if (IS_ENABLED(StickyNavBar) || YMIsTabsSubheader(sub)) return;
     %orig;
 }

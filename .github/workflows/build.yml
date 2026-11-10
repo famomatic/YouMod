@@ -1,18 +1,10 @@
+# Builds the YouMod debs from the branch it is run on and publishes them as a release
+# (tag youmod-v<version>-<run>). "Build IPA with tweaks" injects the newest of these
+# releases instead of compiling YouMod itself. Manual only, to spend Actions minutes on purpose.
 name: Build YouMod
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
-    inputs:
-      repo:
-        description: 'Repository to build from'
-        required: true
-        default: 'Tonwalter888/YouMod'
-      branch:
-        description: 'Branch to build from'
-        required: true
-        default: 'main'
-   
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -28,8 +20,6 @@ jobs:
       - name: Checkout YouMod
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.branch }}
-          repository: ${{ inputs.repo }}
           path: YouMod
 
       - name: Install dependencies
@@ -98,30 +88,34 @@ jobs:
       - name: Fetch MobileVLCKit
         run: bash YouMod/tools/fetch-vlckit.sh
 
+      # The IPA deb keeps FFmpegKit/MobileVLCKit out: cyan turns every .framework in a deb into a load
+      # command on YouTube's executable. The IPA workflow copies them into the app's Frameworks instead.
       - name: Build YouMod
         run: |
           cd YouMod
-          echo "YOUMOD_VERSION=$(grep '^Version:' control | cut -d ' ' -f2)" >> $GITHUB_ENV
+          version="$(grep '^Version:' control | cut -d ' ' -f2)"
+          echo "YOUMOD_VERSION=$version" >> $GITHUB_ENV
+          echo "YOUMOD_TAG=youmod-v$version-${{ github.run_number }}" >> $GITHUB_ENV
+          make clean package DEBUG=0 FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless YOUMOD_BUNDLE_FFMPEG=0
+          mv packages/*.deb "${{ github.workspace }}/dev.water888.youmod_${version}_ipa.deb"
           make clean package DEBUG=0 FINALPACKAGE=1
           make clean package DEBUG=0 FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
           make clean package DEBUG=0 FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide
           mv packages/*.deb ${{ github.workspace }}
+          ls -lh ${{ github.workspace }}/*.deb
 
-      - name: Upload the tweak .deb(s)
-        uses: actions/upload-artifact@v7
-        with:
-         name: YouMod v${{ env.YOUMOD_VERSION }}
-         path: ${{ github.workspace }}/*.deb
-         if-no-files-found: error
-         overwrite: true
-
-      - name: Create a draft release
+      - name: Publish the release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: v${{ env.YOUMOD_VERSION }}
-          name: v${{ env.YOUMOD_VERSION }} 
-          files: |
-             dev.water888.youmod_${{ env.YOUMOD_VERSION }}_iphoneos-arm.deb
-             dev.water888.youmod_${{ env.YOUMOD_VERSION }}_iphoneos-arm64.deb
-             dev.water888.youmod_${{ env.YOUMOD_VERSION }}_iphoneos-arm64e.deb
-          draft: true
+          tag_name: ${{ env.YOUMOD_TAG }}
+          target_commitish: ${{ github.sha }}
+          name: YouMod v${{ env.YOUMOD_VERSION }} (${{ github.run_number }})
+          body: |
+            Built from `${{ github.ref_name }}` @ ${{ github.sha }}.
+            - `*_iphoneos-arm.deb` rootful, `*_iphoneos-arm64.deb` rootless, `*_iphoneos-arm64e.deb` roothide
+            - `*_ipa.deb` rootless without FFmpegKit/MobileVLCKit, used by "Build IPA with tweaks"
+          files: ${{ github.workspace }}/*.deb
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: false
+          make_latest: true

@@ -2,15 +2,11 @@ name: Build IPA with tweaks
 on:
   workflow_dispatch:
     inputs:
-      repo:
-        description: 'Repository to build from'
-        required: true
-        default: 'Tonwalter888/YouMod'
-
-      branch:
-        description: 'Branch to build from'
-        required: true
-        default: 'main'
+      youmod_release:
+        description: "YouMod release tag to inject (empty = newest youmod-v* release from 'Build YouMod')"
+        default: ""
+        required: false
+        type: string
 
       ipa_url:
         description: "URL to the decrypted IPA file"
@@ -111,7 +107,7 @@ jobs:
       - name: Hide Sensitive Inputs
         uses: levibostian/action-hide-sensitive-inputs@v1
         with:
-          exclude_inputs: bundle_id,display_name,youpip,ytuhd,ryd,abconfig,ytweaks,youslider,gonerino,demc,volboost,repo,branch,youquality
+          exclude_inputs: bundle_id,display_name,youpip,ytuhd,ryd,abconfig,ytweaks,youslider,gonerino,demc,volboost,youmod_release,youquality
           
       - name: Install MEGA downloader
         if: ${{ startsWith(inputs.ipa_url, 'https://mega.nz/') }}
@@ -214,11 +210,10 @@ jobs:
       - name: Install cyan and tbd
         run: pipx install https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip
 
+      # Only for tools/ (framework fetch scripts); YouMod itself comes from the release
       - name: Checkout YouMod
         uses: actions/checkout@v7
         with:
-          repository: ${{ inputs.repo }}
-          ref: ${{ inputs.branch }}
           path: YouMod
 
       - name: Clone Open in YouTube (Safari Extension)
@@ -294,16 +289,28 @@ jobs:
       - name: Fetch MobileVLCKit
         run: bash YouMod/tools/fetch-vlckit.sh
 
-      # FFmpegKit is kept out of the deb here: cyan turns every .framework it finds
-      # in a deb into a load command on YouTube's executable, which would load all
-      # of FFmpeg at every launch. It is added after injection instead.
-      - name: Build YouMod
+      - name: Download YouMod deb from the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANT_TAG: ${{ inputs.youmod_release }}
         run: |
-          cd YouMod
-          echo "YOUMOD_VERSION=$(grep '^Version:' control | cut -d ' ' -f2)" >> $GITHUB_ENV
-          make clean package DEBUG=0 FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless YOUMOD_BUNDLE_FFMPEG=0
-          mv packages/*.deb ${{ github.workspace }}/youmod.deb
-        
+          tag="$WANT_TAG"
+          if [ -z "$tag" ]; then
+            tag="$(gh release list --repo "${{ github.repository }}" --exclude-drafts --exclude-pre-releases --limit 100 \
+                     --json tagName,publishedAt \
+                     -q '[.[] | select(.tagName | startswith("youmod-v"))] | sort_by(.publishedAt) | reverse | .[0].tagName')"
+          fi
+          if [ -z "$tag" ] || [ "$tag" = "null" ]; then
+            echo "::error::No youmod-v* release found - run the 'Build YouMod' workflow first"
+            exit 1
+          fi
+          gh release download "$tag" --repo "${{ github.repository }}" --pattern '*_ipa.deb' --output youmod.deb
+          version="${tag#youmod-v}"; version="${version%-*}"
+          echo "YOUMOD_VERSION=$version" >> $GITHUB_ENV
+          echo "Using $tag"
+          echo "YouMod release: \`$tag\`" >> $GITHUB_STEP_SUMMARY
+          ls -lh youmod.deb
+
       - name: Build YouPiP
         if: ${{ inputs.youpip }}
         run: |
