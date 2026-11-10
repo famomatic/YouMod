@@ -131,7 +131,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
         accessibilityIdentifier:nil
         detailTextBlock:nil
         selectBlock:^BOOL (YTSettingsCell *cell, NSUInteger arg1) {
-            return [%c(YTUIUtils) openURL:[NSURL URLWithString:@"https://github.com/Tonwalter888/YouMod/issues/new/choose"]];
+            return [%c(YTUIUtils) openURL:[NSURL URLWithString:@"https://github.com/famomatic/YouMod/issues/new/choose"]];
         }
     ];
     [sectionItems addObject:issues];
@@ -142,7 +142,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
         accessibilityIdentifier:nil
         detailTextBlock:nil
         selectBlock:^BOOL (YTSettingsCell *cell, NSUInteger arg1) {
-            return [%c(YTUIUtils) openURL:[NSURL URLWithString:@"https://github.com/Tonwalter888/YouMod"]];
+            return [%c(YTUIUtils) openURL:[NSURL URLWithString:@"https://github.com/famomatic/YouMod"]];
         }
     ];
     [sectionItems addObject:sourceCodes];

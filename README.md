@@ -1,21 +1,16 @@
 <p align=center>
-<img src="https://github.com/grohit1810/YouMod/blob/feature/add-sponsorblock/Icon.png" width="200" height="200"/>
+<img src="Icon.png" width="200" height="200"/>
 <h1 align="center">YouMod</h1>
 </p>
 <p align=center>
 <img src="https://img.shields.io/badge/Platform-iOS%20%7C%20iPadOS%2014.0%2B-blue" alt="Badge"/>
-<a href="https://github.com/Tonwalter888/YouMod/releases/latest"><img src="https://custom-icon-badges.demolab.com/github/v/release/Tonwalter888/YouMod?color=brightgreen&label=Latest%20release" alt="Badge"></img></a>
-<a href="https://github.com/Tonwalter888/YouMod/releases/latest"><img src="https://img.shields.io/github/downloads/Tonwalter888/YouMod/total?label=Download" alt="Badge"></img></a>
+<a href="https://github.com/famomatic/YouMod/releases/latest"><img src="https://custom-icon-badges.demolab.com/github/v/release/famomatic/YouMod?color=brightgreen&label=Latest%20release" alt="Badge"></img></a>
+<a href="https://github.com/famomatic/YouMod/releases/latest"><img src="https://img.shields.io/github/downloads/famomatic/YouMod/total?label=Download" alt="Badge"></img></a>
 </p>
 
-A tweak that's try to recreate features like in YTLite as much as possible. Contributions are welcome! ^^
+A tweak that recreates the features of YTLite as much as possible, plus alternative tweaks combined.
 
-Thanks for 600 stars and 1,400 forks! This might be the best project I've done.
-
-If you want to contribute this project, scroll down to `How to contribute this project?` part.
-
-## Why I created this project?
-The reason is because of YTLite no longer free. So I'll try my best to recreate all the features as much as I can, plus alternative tweaks combined.
+This is [famomatic](https://github.com/famomatic)'s fork of [YouMod](https://github.com/Tonwalter888/YouMod) by Tonwalter888, maintained for current YouTube builds (21.44+). Contributions are welcome — see `How to contribute this project?` below.
 
 ## Features
 This tweak add a lot of QoL feature and can hide elements in YouTube. Such as:
@@ -31,16 +26,23 @@ This tweak add a lot of QoL feature and can hide elements in YouTube. Such as:
 ## Supported YouTube version
 Up to the latest, this is the goal of this tweak. Any versions starting from 19.x - latest and running at least iOS 14.
 
+## Downloads
+Every run of **Build YouMod** publishes a release (`youmod-v<version>-<run>`) on the [releases page](https://github.com/famomatic/YouMod/releases):
+- `*_iphoneos-arm.deb` — rootful
+- `*_iphoneos-arm64.deb` — rootless
+- `*_iphoneos-arm64e.deb` — roothide
+- `*_ipa.deb` — rootless without the bundled FFmpegKit/MobileVLCKit, used for IPA builds
+
 ## How to build the IPA?
-1. Click on **Sync fork**, and if your branch is out-of-date, click on **Update branch**.
-2. Navigate to **Actions** in your forked repository and select **Build IPA with tweaks**.
-3. Click the **Run workflow** button located on the right side.
-4. Get a decrypted .ipa file (I cannot provide this due to legal reasons.), then upload it to a file provider (e.g., filebin.net,filemail.com,catbox.moe, Mega, or Dropbox is recommended). Paste the URL of the decrypted IPA file in the provided field. You can also change the BundleID and Display Name if desired.
+1. Fork this repository (or click **Sync fork** on your fork to bring it up to date).
+2. In **Actions**, run **Build YouMod** on the branch you want. It builds the debs and publishes them as a release.
+3. Run **Build IPA with tweaks**.
+4. Get a decrypted .ipa file (I cannot provide this due to legal reasons), upload it to a file host (e.g. filebin.net, filemail.com, catbox.moe, Mega or Dropbox) and paste the URL into `ipa_url`. You can also change the Bundle ID and Display Name.
 
-**NOTE:** Make sure to provide a direct download link to the file, not a link to a webpage. Otherwise, the process will fail.
+**NOTE:** Provide a direct download link to the file, not a link to a webpage, otherwise the build fails.
 
-5. Make sure all inputs are correct, then click **Run workflow** to start the process.
-6. Wait for the build to finish. You can download the YouMod IPA from the releases section of your forked repo. (If you can't find the releases section, go to your forked repo and add /releases to the URL, i.e., github.com/yourusername/YouMod/releases.)
+5. Leave `youmod_release` empty to inject the newest YouMod release, or enter a release tag (e.g. `youmod-v2.0.0-31`) to use a specific one. Choose which extra tweaks to integrate, then click **Run workflow**.
+6. When the build finishes, the IPA is attached to a draft release on your repository's releases page (`github.com/yourusername/YouMod/releases`).
 
 ## How to contribute this project?
 1. Find or create an issue with the bug you're facing or a feature missing (Can also be workflows and localizations).
@@ -52,9 +54,10 @@ Up to the latest, this is the goal of this tweak. Any versions starting from 19.
     - Once your PR is submitted, maintainers or collaborators may review it and ask for changes or feedback. Make any necessary adjustments, and respond to comments as needed.
 
 ## License
-This project uses GPLv3 license. See [LICENSE](https://github.com/Tonwalter888/YouMod/blob/main/LICENSE) for more details.
+This project uses GPLv3 license. See [LICENSE](https://github.com/famomatic/YouMod/blob/main/LICENSE) for more details.
 
 ## Credits
+- [YouMod](https://github.com/Tonwalter888/YouMod) - Tonwalter888 (original project)
 - [YTLite](https://github.com/dayanch96/YTLite) - dayanch96
 - [YTMusicUltimate](https://github.com/dayanch96/YTMusicUltimate) - dayanch96
 - [OLEDKeyboard](https://github.com/dayanch96/OLEDKeyboard) - dayanch96
