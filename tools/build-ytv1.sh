@@ -40,8 +40,10 @@ exec clang -target arm64-apple-ios14.0 -isysroot "$sdk" -Wno-unused-command-line
 CC
 chmod +x "$tmp/cc"
 
-linker=()
-[[ "$(uname)" == "Darwin" ]] || linker=(-fuse-ld=lld)
+# Apple's ld on macOS, lld elsewhere (a plain string: macOS bash 3.2 treats an
+# empty array as unbound under set -u)
+linker_flag=""
+[[ "$(uname)" == "Darwin" ]] || linker_flag="-fuse-ld=lld"
 
 (
   cd "$tmp/ytv1"
@@ -56,7 +58,7 @@ else llvm-ranlib "$tmp/libytv1.a"; fi
 
 fw="$tmp/YTV1.framework"
 mkdir -p "$fw"
-"$tmp/cc" "${linker[@]}" -dynamiclib -o "$fw/YTV1" \
+"$tmp/cc" $linker_flag -dynamiclib -o "$fw/YTV1" \
   -Wl,-all_load "$tmp/libytv1.a" \
   -framework CoreFoundation -framework Security -lresolv \
   -install_name @rpath/YTV1.framework/YTV1

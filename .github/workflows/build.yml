@@ -99,7 +99,8 @@ jobs:
           if [ -f YouMod/modules/ytv1/YTV1.framework/YTV1 ]; then
             (cd YouMod/modules/ytv1 && zip -qry "${{ github.workspace }}/YTV1-ios-arm64.zip" YTV1.framework)
           else
-            echo "::warning::YTV1.framework was not built - the release has no ytv1 download method"
+            echo "::error::YTV1.framework was not built"
+            exit 1
           fi
 
       # The IPA deb keeps FFmpegKit/MobileVLCKit out: cyan turns every .framework in a deb into a load
