@@ -14,7 +14,7 @@ This is [famomatic](https://github.com/famomatic)'s fork of [YouMod](https://git
 
 ## Features
 This tweak add a lot of QoL feature and can hide elements in YouTube. Such as:
-- Downloading (Video, Audio, Captions, Thumbnail, Video datails, etc. Currently supports up to 1080p60)
+- Downloading (Video, Audio, Captions, Thumbnail, Video details, etc.) with three methods: direct, on-device (SABR) and [ytv1](https://github.com/famomatic/ytv1)
 - Appearance (OLED theme and keyboard)
 - Navigation bar (Hiding buttons)
 - Player (Hiding elements, buttons, and Add custom actions, etc.)
@@ -31,7 +31,8 @@ Every run of **Build YouMod** publishes a release (`youmod-v<version>-<run>`) on
 - `*_iphoneos-arm.deb` — rootful
 - `*_iphoneos-arm64.deb` — rootless
 - `*_iphoneos-arm64e.deb` — roothide
-- `*_ipa.deb` — rootless without the bundled FFmpegKit/MobileVLCKit, used for IPA builds
+- `*_ipa.deb` — rootless without the bundled FFmpegKit/MobileVLCKit/YTV1, used for IPA builds
+- `YTV1-ios-arm64.zip` — YTV1.framework for the ytv1 download method (built from [famomatic/ytv1](https://github.com/famomatic/ytv1) + `ytv1bridge/`), added to IPAs
 
 ## How to build the IPA?
 1. Fork this repository (or click **Sync fork** on your fork to bring it up to date).

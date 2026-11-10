@@ -129,8 +129,10 @@
 "SAVE_CURRENT_IMAGE" = "현재 이미지 저장";
 "COPY_CURRENT_IMAGE" = "현재 이미지 복사";
 "DOWNLOAD_METHOD" = "다운로드 방식";
-"DOWNLOAD_METHOD_DESC" = "동영상을 다운로드하는 방식입니다. 기기 내 처리 방식은 최신 YouTube 버전에서 작동합니다.";
+"DOWNLOAD_METHOD_DESC" = "동영상을 다운로드하는 방식입니다. 기기 내 처리는 앱의 스트리밍을 그대로 쓰고, ytv1은 앱과 별개로 영상을 직접 받아옵니다.";
 "METHOD_DIRECT" = "직접";
+"METHOD_YTV1" = "ytv1";
+"YTV1_NOT_INSTALLED" = "ytv1 엔진이 설치되어 있지 않습니다. ytv1이 포함된 빌드가 필요합니다.";
 "METHOD_ONDEVICE" = "기기 내 처리 (SABR)";
 
 "APPEARANCE" = "화면 표시";

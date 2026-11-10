@@ -131,6 +131,8 @@
 "DOWNLOAD_METHOD" = "İndirme yöntemi";
 "DOWNLOAD_METHOD_DESC" = "Videoların nasıl indirileceği. Cihaz içi yöntemi en son YouTube sürümlerinde çalışır.";
 "METHOD_DIRECT" = "Doğrudan";
+"METHOD_YTV1" = "ytv1";
+"YTV1_NOT_INSTALLED" = "The ytv1 engine is not installed. This build does not include YTV1.framework.";
 "METHOD_ONDEVICE" = "Cihaz içi (SABR)";
 
 "APPEARANCE" = "Görünüm";

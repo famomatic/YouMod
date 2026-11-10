@@ -129,8 +129,10 @@
 "SAVE_CURRENT_IMAGE" = "Save current image";
 "COPY_CURRENT_IMAGE" = "Copy current image";
 "DOWNLOAD_METHOD" = "Download method";
-"DOWNLOAD_METHOD_DESC" = "How videos are downloaded. On-device works on the latest YouTube versions.";
+"DOWNLOAD_METHOD_DESC" = "How videos are downloaded. On-device uses the app's own streaming; ytv1 fetches the video independently of the app.";
 "METHOD_DIRECT" = "Direct";
+"METHOD_YTV1" = "ytv1";
+"YTV1_NOT_INSTALLED" = "The ytv1 engine is not installed. This build does not include YTV1.framework.";
 "METHOD_ONDEVICE" = "On-device (SABR)";
 
 "APPEARANCE" = "Appearance";

@@ -131,6 +131,8 @@
 "DOWNLOAD_METHOD" = "Méthode de téléchargement";
 "DOWNLOAD_METHOD_DESC" = "Façon dont les vidéos sont téléchargées. 'Sur l'appareil' fonctionne sur les dernières versions de YouTube.";
 "METHOD_DIRECT" = "Direct";
+"METHOD_YTV1" = "ytv1";
+"YTV1_NOT_INSTALLED" = "The ytv1 engine is not installed. This build does not include YTV1.framework.";
 "METHOD_ONDEVICE" = "Sur l'appareil (SABR)";
 
 "APPEARANCE" = "Apparence";

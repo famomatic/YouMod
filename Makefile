@@ -23,6 +23,9 @@ FFMPEGKIT_DIR ?= modules/ffmpeg
 # MobileVLCKit for the Downloads player's VLC route (tools/fetch-vlckit.sh); also
 # dlopen'd on demand, staged and injected exactly like FFmpegKit.
 VLCKIT_DIR ?= modules/vlc
+# YTV1.framework (famomatic/ytv1 via tools/build-ytv1.sh) for the ytv1 download
+# method; dlopen'd on demand, staged and injected like the others.
+YTV1_DIR ?= modules/ytv1
 YOUMOD_BUNDLE_FFMPEG ?= 1
 
 after-stage::
@@ -44,5 +47,14 @@ ifeq ($(YOUMOD_BUNDLE_FFMPEG),1)
 		echo "==> Staged MobileVLCKit into $${bundle#$(THEOS_STAGING_DIR)}/Frameworks"; \
 	else \
 		echo "==> No MobileVLCKit in $(VLCKIT_DIR) - building without the VLC playback route"; \
+	fi
+	@if [ -f "$(YTV1_DIR)/YTV1.framework/YTV1" ]; then \
+		bundle="$$(find "$(THEOS_STAGING_DIR)" -type d -name YouMod.bundle -print -quit)"; \
+		if [ -z "$$bundle" ]; then echo "error: YouMod.bundle not found in staging" >&2; exit 1; fi; \
+		mkdir -p "$$bundle/Frameworks"; \
+		cp -R "$(YTV1_DIR)/YTV1.framework" "$$bundle/Frameworks/"; \
+		echo "==> Staged YTV1 into $${bundle#$(THEOS_STAGING_DIR)}/Frameworks"; \
+	else \
+		echo "==> No YTV1 in $(YTV1_DIR) - building without the ytv1 download method"; \
 	fi
 endif

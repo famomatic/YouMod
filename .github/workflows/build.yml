@@ -84,6 +84,24 @@ jobs:
       - name: Fetch MobileVLCKit
         run: bash YouMod/tools/fetch-vlckit.sh
 
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+
+      # famomatic/ytv1 + ytv1bridge/ -> modules/ytv1/YTV1.framework (ytv1 download method)
+      - name: Build YTV1.framework
+        env:
+          YTV1_REF: main
+        run: |
+          bash YouMod/tools/build-ytv1.sh
+          if [ -f YouMod/modules/ytv1/YTV1.framework/YTV1 ]; then
+            (cd YouMod/modules/ytv1 && zip -qry "${{ github.workspace }}/YTV1-ios-arm64.zip" YTV1.framework)
+          else
+            echo "::warning::YTV1.framework was not built - the release has no ytv1 download method"
+          fi
+
       # The IPA deb keeps FFmpegKit/MobileVLCKit out: cyan turns every .framework in a deb into a load
       # command on YouTube's executable. The IPA workflow copies them into the app's Frameworks instead.
       - name: Build YouMod
@@ -109,9 +127,11 @@ jobs:
           body: |
             Built from `${{ github.ref_name }}` @ ${{ github.sha }}.
             - `*_iphoneos-arm.deb` rootful, `*_iphoneos-arm64.deb` rootless, `*_iphoneos-arm64e.deb` roothide
-            - `*_ipa.deb` rootless without FFmpegKit/MobileVLCKit, used by "Build IPA with tweaks"
-          files: ${{ github.workspace }}/*.deb
-          fail_on_unmatched_files: true
+            - `*_ipa.deb` rootless without FFmpegKit/MobileVLCKit/YTV1, used by "Build IPA with tweaks"
+            - `YTV1-ios-arm64.zip` YTV1.framework (ytv1 download method), copied into the IPA's Frameworks
+          files: |
+            ${{ github.workspace }}/*.deb
+            ${{ github.workspace }}/YTV1-ios-arm64.zip
           draft: false
           prerelease: false
           make_latest: true

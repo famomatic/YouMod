@@ -97,6 +97,7 @@
 #define DownloadMethod @"YouModDownloadMethod" // index into the "Download method" picker
 #define DownloadMethodDirect 0   // YouTube's built-in stream URLs
 #define DownloadMethodOnDevice 1 // on-device SABR engine (was 2 while an external-server method sat at 1)
+#define DownloadMethodYTV1 2     // ytv1 (YTV1.framework)
 
 extern void YMRegisterDefaults(void);
 #define IS_ENABLED(k) [[NSUserDefaults standardUserDefaults] boolForKey:k]
@@ -889,6 +890,36 @@ typedef NS_ENUM(NSInteger, YouModTranslationState) {
 
 // On-device SABR downloader (SABRDownload.x). Produces two elementary files (video
 // mp4 + audio m4a) for the existing muxer; progress/completion on the main queue.
+// A downloadable stream from the player response (Download.x).
+@interface YouModMediaFormat : NSObject
+@property (nonatomic, strong) YTIFormatStream *source;
+@property (nonatomic, copy) NSString *urlString;
+@property (nonatomic, copy) NSString *qualityLabel;
+@property (nonatomic, copy) NSString *mimeType;
+@property (nonatomic, copy) NSString *idp;
+@property (nonatomic, assign) NSInteger contentLength;
+@property (nonatomic, assign) NSUInteger durationMs;
+@property (nonatomic, assign) int fps;
+@property (nonatomic, assign) int itag;
+@property (nonatomic, assign) int resolution; // height
+@property (nonatomic, assign) int bitrate;
+@property (nonatomic, assign) BOOL video;
+@end
+
+// ytv1 download method (Files/YTV1Download.x, YTV1.framework dlopen'd on first use).
+@interface YMYTV1 : NSObject
++ (BOOL)available;          // the framework is installed
++ (NSString *)loadError;    // why it could not be loaded, or nil
++ (NSString *)version;      // ytv1 commit it was built from
++ (void)downloadVideoFormat:(YouModMediaFormat *)videoFormat audioFormat:(YouModMediaFormat *)audioFormat videoID:(NSString *)videoID
+                   progress:(void (^)(float fraction, unsigned long long bytesDownloaded, BOOL isAudio))progress
+                 completion:(void (^)(NSURL *videoURL, NSURL *audioURL, NSString *err))completion;
++ (void)downloadAudioFormat:(YouModMediaFormat *)audioFormat videoID:(NSString *)videoID
+                   progress:(void (^)(float fraction, unsigned long long bytesDownloaded))progress
+                 completion:(void (^)(NSURL *audioURL, NSString *err))completion;
++ (void)cancelCurrent;
+@end
+
 @interface YMSABR : NSObject
 + (void)downloadVideoItag:(int)videoItag audioItag:(int)audioItag
                  progress:(void (^)(float fraction, unsigned long long bytesDownloaded, BOOL isAudio))progress

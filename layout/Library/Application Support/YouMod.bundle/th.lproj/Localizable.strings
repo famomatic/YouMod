@@ -131,6 +131,8 @@
 "DOWNLOAD_METHOD" = "วิธีดาวน์โหลด";
 "DOWNLOAD_METHOD_DESC" = "วิธีการดาวน์โหลดวิดีโอ แบบอุปกรณ์จะใช้งานได้กับ YouTube เวอร์ชันล่าสุด";
 "METHOD_DIRECT" = "โดยตรง";
+"METHOD_YTV1" = "ytv1";
+"YTV1_NOT_INSTALLED" = "The ytv1 engine is not installed. This build does not include YTV1.framework.";
 "METHOD_ONDEVICE" = "บนอุปกรณ์ (SABR)";
 
 "APPEARANCE" = "ลักษณะ";

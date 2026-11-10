@@ -131,6 +131,8 @@
 "DOWNLOAD_METHOD" = "Способ загрузки";
 "DOWNLOAD_METHOD_DESC" = "Определяет, как скачиваются видео. Режим «На устройстве» работает в последних версиях YouTube.";
 "METHOD_DIRECT" = "Прямой";
+"METHOD_YTV1" = "ytv1";
+"YTV1_NOT_INSTALLED" = "The ytv1 engine is not installed. This build does not include YTV1.framework.";
 "METHOD_ONDEVICE" = "На устройстве (SABR)";
 
 "APPEARANCE" = "Оформление";

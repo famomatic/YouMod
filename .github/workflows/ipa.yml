@@ -303,6 +303,7 @@ jobs:
           gh release download "$tag" --repo "${{ github.repository }}" --pattern '*_ipa.deb' --output youmod.deb
           version="${tag#youmod-v}"; version="${version%-*}"
           echo "YOUMOD_VERSION=$version" >> $GITHUB_ENV
+          echo "YOUMOD_TAG=$tag" >> $GITHUB_ENV
           echo "Using $tag"
           echo "YouMod release: \`$tag\`" >> $GITHUB_STEP_SUMMARY
           ls -lh youmod.deb
@@ -418,14 +419,26 @@ jobs:
 
       # Copied in without load commands - YouMod dlopens FFmpegKit only when a
       # download needs it. In the app's Frameworks folder every signer re-signs it.
-      - name: Add FFmpegKit and MobileVLCKit frameworks
+      - name: Download YTV1.framework from the YouMod release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          has_ffmpeg=0; has_vlc=0
+          mkdir -p YouMod/modules/ytv1
+          if gh release download "$YOUMOD_TAG" --repo "${{ github.repository }}" --pattern 'YTV1-ios-arm64.zip' --dir ytv1zip; then
+            unzip -q ytv1zip/YTV1-ios-arm64.zip -d YouMod/modules/ytv1
+          else
+            echo "::warning::$YOUMOD_TAG has no YTV1-ios-arm64.zip - IPA built without the ytv1 download method"
+          fi
+
+      - name: Add FFmpegKit, MobileVLCKit and YTV1 frameworks
+        run: |
+          has_ffmpeg=0; has_vlc=0; has_ytv1=0
           [ -f YouMod/modules/ffmpeg/ffmpegkit.framework/ffmpegkit ] && has_ffmpeg=1
           [ -f YouMod/modules/vlc/MobileVLCKit.framework/MobileVLCKit ] && has_vlc=1
+          [ -f YouMod/modules/ytv1/YTV1.framework/YTV1 ] && has_ytv1=1
           [ $has_ffmpeg = 1 ] || echo "::warning::No FFmpegKit frameworks - IPA built without bundled FFmpeg (run the 'Build FFmpegKit (full GPL)' workflow)"
           [ $has_vlc = 1 ] || echo "::warning::No MobileVLCKit - the Downloads player has no VLC route"
-          if [ $has_ffmpeg = 0 ] && [ $has_vlc = 0 ]; then exit 0; fi
+          if [ $has_ffmpeg = 0 ] && [ $has_vlc = 0 ] && [ $has_ytv1 = 0 ]; then exit 0; fi
           ipa="YouMod_${{ env.YT_VERSION }}_v${{ env.YOUMOD_VERSION }}.ipa"
           rm -rf ipawork && mkdir ipawork && cd ipawork
           unzip -q "../$ipa"
@@ -433,6 +446,7 @@ jobs:
           mkdir -p "$app/Frameworks"
           [ $has_ffmpeg = 1 ] && cp -R ../YouMod/modules/ffmpeg/*.framework "$app/Frameworks/"
           [ $has_vlc = 1 ] && cp -R ../YouMod/modules/vlc/MobileVLCKit.framework "$app/Frameworks/"
+          [ $has_ytv1 = 1 ] && cp -R ../YouMod/modules/ytv1/YTV1.framework "$app/Frameworks/"
           rm "../$ipa"
           zip -qry "../$ipa" Payload -x '*/.*'
           cd .. && rm -rf ipawork

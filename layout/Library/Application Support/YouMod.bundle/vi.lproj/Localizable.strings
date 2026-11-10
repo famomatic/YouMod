@@ -131,6 +131,8 @@
 "DOWNLOAD_METHOD" = "Phương thức tải xuống";
 "DOWNLOAD_METHOD_DESC" = "Cách video được tải xuống. Chế độ 'Trên thiết bị' hoạt động trên các phiên bản YouTube mới nhất.";
 "METHOD_DIRECT" = "Trực tiếp";
+"METHOD_YTV1" = "ytv1";
+"YTV1_NOT_INSTALLED" = "The ytv1 engine is not installed. This build does not include YTV1.framework.";
 "METHOD_ONDEVICE" = "Trên thiết bị (SABR)";
 
 "APPEARANCE" = "Hiển thị";

@@ -30,20 +30,6 @@
 }
 @end
 
-@interface YouModMediaFormat : NSObject
-@property (nonatomic, strong) YTIFormatStream *source;
-@property (nonatomic, copy) NSString *urlString;
-@property (nonatomic, copy) NSString *qualityLabel;
-@property (nonatomic, copy) NSString *mimeType;
-@property (nonatomic, copy) NSString *idp;
-@property (nonatomic, assign) NSInteger contentLength;
-@property (nonatomic, assign) NSUInteger durationMs;
-@property (nonatomic, assign) int fps;
-@property (nonatomic, assign) int itag;
-@property (nonatomic, assign) int resolution;
-@property (nonatomic, assign) int bitrate;
-@property (nonatomic, assign) BOOL video;
-@end
 
 @implementation YouModMediaFormat
 @end
@@ -1155,6 +1141,7 @@ static NSString *YouModAudioOutputExtension(NSInteger output) {
     [self.rangeDownloader cancel];
     [self.exporter cancelExport];
     [YMSABR cancelCurrent];
+    [YMYTV1 cancelCurrent];
     YMFFmpegCancel();
     
     self.task = nil;
@@ -1327,6 +1314,10 @@ static NSString *YouModAudioOutputExtension(NSInteger output) {
         [self startSABRVideoDownloadWithVideoFormat:videoFormat audioFormat:audioFormat fileName:fileName presenter:presenter];
         return;
     }
+    if (INTFORVAL(DownloadMethod) == DownloadMethodYTV1) {
+        [self startYTV1VideoDownloadWithVideoFormat:videoFormat audioFormat:audioFormat fileName:fileName presenter:presenter videoID:vidID];
+        return;
+    }
     NSURL *videoURL = [NSURL URLWithString:videoFormat.urlString];
     NSURL *audioURL = [NSURL URLWithString:audioFormat.urlString];
     if (!videoURL || !audioURL) {
@@ -1475,6 +1466,78 @@ static YouModMediaFormat *YouModSABRStreamableVideoFormat(YouModMediaFormat *for
         }];
 }
 
+// ytv1 download: YTV1.framework resolves and fetches the chosen video and audio itags
+// itself (falling back to the closest format when it doesn't offer the exact itag),
+// then the two files go through the same merge as the other methods.
+- (BOOL)ytv1ReadyOrFail {
+    if ([YMYTV1 available]) return YES;
+    YouModSendError(LOC(@"YTV1_NOT_INSTALLED"));
+    return NO;
+}
+
+- (void)startYTV1VideoDownloadWithVideoFormat:(YouModMediaFormat *)videoFormat audioFormat:(YouModMediaFormat *)audioFormat fileName:(NSString *)fileName presenter:(UIViewController *)presenter videoID:(NSString *)vidID {
+    if (![self ytv1ReadyOrFail]) return;
+    self.active = YES;
+    self.cancelled = NO;
+    self.completedBytes = 0;
+    self.totalBytes = videoFormat.contentLength + audioFormat.contentLength;
+    [self showProgressWithTitle:LOC(@"DOWNLOADING_VIDEO") presenter:presenter];
+
+    unsigned long long durationMs = videoFormat.durationMs ?: audioFormat.durationMs;
+    __weak typeof(self) weakSelf = self;
+    [YMYTV1 downloadVideoFormat:videoFormat audioFormat:audioFormat videoID:vidID
+        progress:^(float fraction, unsigned long long bytesDownloaded, BOOL isAudio) {
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self || self.cancelled) return;
+            [self updateSABRProgressTitle:LOC(@"DOWNLOADING_VIDEO") progress:fraction bytesDownloaded:bytesDownloaded];
+        }
+        completion:^(NSURL *videoURL, NSURL *audioURL, NSString *err) {
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self || self.cancelled) return;
+            if (err || !videoURL || !audioURL) {
+                [self failWithError:[NSError errorWithDomain:@"YouMod" code:30 userInfo:@{NSLocalizedDescriptionKey: err ?: LOC(@"DOWNLOAD_FAILED")}]];
+                return;
+            }
+            self.videoTempURL = videoURL; // so cleanupTemporaryFiles removes them afterwards
+            self.audioTempURL = audioURL;
+            [self mergeVideoURL:videoURL audioURL:audioURL fileName:fileName outputExtension:YouModMergedVideoOutputExtension(videoFormat, audioFormat) durationMs:durationMs presenter:presenter];
+        }];
+}
+
+- (void)startYTV1AudioDownloadWithAudioFormat:(YouModMediaFormat *)audioFormat fileName:(NSString *)fileName presenter:(UIViewController *)presenter videoID:(NSString *)vidID {
+    if (![self ytv1ReadyOrFail]) return;
+    self.active = YES;
+    self.cancelled = NO;
+    self.completedBytes = 0;
+    self.totalBytes = audioFormat.contentLength;
+    [self showProgressWithTitle:LOC(@"DOWNLOADING_AUDIO") presenter:presenter];
+
+    NSURL *finalURL = YouModUniqueFileURL(fileName, YouModAudioOutputExtension(self.audioOutput));
+    __weak typeof(self) weakSelf = self;
+    [YMYTV1 downloadAudioFormat:audioFormat videoID:vidID
+        progress:^(float fraction, unsigned long long bytesDownloaded) {
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self || self.cancelled) return;
+            [self updateSABRProgressTitle:LOC(@"DOWNLOADING_AUDIO") progress:fraction bytesDownloaded:bytesDownloaded];
+        }
+        completion:^(NSURL *audioURL, NSString *err) {
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self || self.cancelled) return;
+            if (err || !audioURL) {
+                [self failWithError:[NSError errorWithDomain:@"YouMod" code:31 userInfo:@{NSLocalizedDescriptionKey: err ?: LOC(@"DOWNLOAD_FAILED")}]];
+                return;
+            }
+            self.audioTempURL = audioURL;
+            // A WebM/Opus track (ytv1's fallback when the m4a itag is missing) needs FFmpeg.
+            BOOL webm = [audioURL.pathExtension.lowercaseString isEqualToString:@"webm"];
+            if (webm || [self audioNeedsFFmpeg]) {
+                [self convertAudioURL:audioURL toURL:finalURL durationMs:audioFormat.durationMs presenter:presenter];
+            } else {
+                [self exportSABRAudioURL:audioURL toURL:finalURL presenter:presenter];
+            }
+        }];
+}
+
 // Remux a SABR audio track (fragmented mp4) to a clean m4a container, full length.
 - (void)exportSABRAudioURL:(NSURL *)audioURL toURL:(NSURL *)outputURL presenter:(UIViewController *)presenter {
     [self updateProgressTitle:LOC(@"FINA_VIDEO") progress:0.985f];
@@ -1522,6 +1585,10 @@ static YouModMediaFormat *YouModSABRStreamableVideoFormat(YouModMediaFormat *for
     // (media flows via SABR), so the URL check below would otherwise abort.
     if (INTFORVAL(DownloadMethod) == DownloadMethodOnDevice) {
         [self startSABRAudioDownloadWithAudioFormat:audioFormat fileName:fileName presenter:presenter];
+        return;
+    }
+    if (INTFORVAL(DownloadMethod) == DownloadMethodYTV1) {
+        [self startYTV1AudioDownloadWithAudioFormat:audioFormat fileName:fileName presenter:presenter videoID:vidID];
         return;
     }
     NSURL *audioURL = [NSURL URLWithString:audioFormat.urlString];
@@ -2321,8 +2388,8 @@ static void YouModShowAudioTrackSelectionSheet(YTPlayerViewController *player, U
         return;
     }
 
-    // Skip the audio-track chooser for a single format or on-device SABR (picks the track itself).
-    if (audioFormats.count == 1 || INTFORVAL(DownloadMethod) == DownloadMethodOnDevice) {
+    // Skip the audio-track chooser for a single format, on-device SABR or ytv1 (they pick the track themselves).
+    if (audioFormats.count == 1 || INTFORVAL(DownloadMethod) == DownloadMethodOnDevice || INTFORVAL(DownloadMethod) == DownloadMethodYTV1) {
         YouModMediaFormat *selectedFormat = YouModAutoAudioFormat(audioFormats, downloadVideo ? videoFormat : nil, INTFORVAL(AudioOutputFormat));
         if (downloadVideo) {
             YouModEnqueueDownload(player, videoFormat, selectedFormat, 0, presenter);

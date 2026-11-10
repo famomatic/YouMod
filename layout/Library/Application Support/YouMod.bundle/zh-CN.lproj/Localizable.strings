@@ -131,6 +131,8 @@
 "DOWNLOAD_METHOD" = "下载方式";
 "DOWNLOAD_METHOD_DESC" = "视频的下载方式。设备端下载适用于最新版 YouTube。";
 "METHOD_DIRECT" = "直接下载";
+"METHOD_YTV1" = "ytv1";
+"YTV1_NOT_INSTALLED" = "The ytv1 engine is not installed. This build does not include YTV1.framework.";
 "METHOD_ONDEVICE" = "设备端 (SABR)";
 
 "APPEARANCE" = "外观";
