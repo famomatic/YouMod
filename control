@@ -1,9 +1,12 @@
-Package: dev.water888.youmod
+Package: io.github.famomatic.youmod
 Name: YouMod
 Version: 2.0.0
 Architecture: iphoneos-arm
-Description: A lightweight YouTube enhancer
-Maintainer: Tonwalter888, G Rohit
-Author: Tonwalter888
+Description: A lightweight YouTube enhancer (fork of YouMod by Tonwalter888)
+Maintainer: famomatic
+Author: famomatic
 Section: Tweaks
 Depends: mobilesubstrate (>= 0.9.5000), firmware (>= 14.0)
+Conflicts: dev.water888.youmod
+Replaces: dev.water888.youmod
+Provides: dev.water888.youmod
