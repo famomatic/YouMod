@@ -107,24 +107,18 @@
 "THUMBNAIL_OPTIONS" = "Tải hình thu nhỏ";
 "COPY" = "Sao chép";
 "COPIED_TO_CLIPBOARD" = "Đã sao chép vào bảng tạm";
-"CONNECTING_TO_SERVER" = "Đang kết nối tới máy chủ...";
-"DOWNLOADING_TO_SERVER" = "Đang tải xuống máy chủ...";
 "COPY_COMMENT_TEXT" = "Sao chép nội dung bình luận";
 "SAVE_COMMENT_IMAGE" = "Lưu bình luận dưới dạng hình ảnh";
 "COPY_COMMENT_IMAGE" = "Sao chép bình luận dưới dạng hình ảnh";
 "COPY_POST_TEXT" = "Sao chép nội dung bài đăng";
 "SAVE_POST_IMAGE" = "Lưu bài đăng dưới dạng hình ảnh";
 "COPY_POST_IMAGE" = "Sao chép bài đăng dưới dạng hình ảnh";
-"DOWNLOAD_SERVER" = "Máy chủ tải xuống";
-"CHOOSE_DOWNLOAD_SERVER" = "Chọn máy chủ tải xuống";
 "DOWNLOAD_COMMENT" = "Lưu thông tin bình luận";
 "DOWNLOAD_COMMENT_DESC" = "Cho phép sao chép nội dung bình luận và lưu bình luận dưới dạng hình ảnh bằng cách nhấn giữ lâu vào nút ba dấu chấm.";
 "DOWNLOAD_POST" = "Lưu thông tin bài đăng";
 "DOWNLOAD_POST_DESC" = "Cho phép sao chép nội dung bài đăng và lưu bài đăng dưới dạng hình ảnh bằng cách nhấn giữ lâu.";
 "TRANSLATE_COMMENT" = "Dịch bình luận";
 "TRANSLATE_POST" = "Dịch bài đăng";
-"SERVER_EUROPRE1" = "Châu Âu";
-"SERVER_ASIA1" = "Thái Lan - Châu Á";
 "SHOW_OPTIONS" = "Hiện tùy chọn";
 "ENGLISH" = "Tiếng Anh";
 "TRANSLATION" = "Dịch thuật";
@@ -137,7 +131,6 @@
 "DOWNLOAD_METHOD" = "Phương thức tải xuống";
 "DOWNLOAD_METHOD_DESC" = "Cách video được tải xuống. Chế độ 'Trên thiết bị' hoạt động trên các phiên bản YouTube mới nhất.";
 "METHOD_DIRECT" = "Trực tiếp";
-"METHOD_SERVER" = "Máy chủ";
 "METHOD_ONDEVICE" = "Trên thiết bị (SABR)";
 
 "APPEARANCE" = "Hiển thị";

@@ -107,24 +107,18 @@
 "THUMBNAIL_OPTIONS" = "Scarica miniatura";
 "COPY" = "Copia";
 "COPIED_TO_CLIPBOARD" = "Copiato negli appunti";
-"CONNECTING_TO_SERVER" = "Connessione al server in corso...";
-"DOWNLOADING_TO_SERVER" = "Download sul server in corso...";
 "COPY_COMMENT_TEXT" = "Copia testo del commento";
 "SAVE_COMMENT_IMAGE" = "Salva commento come immagine";
 "COPY_COMMENT_IMAGE" = "Copia commento come immagine";
 "COPY_POST_TEXT" = "Copia testo del post";
 "SAVE_POST_IMAGE" = "Salva post come immagine";
 "COPY_POST_IMAGE" = "Copia post come immagine";
-"DOWNLOAD_SERVER" = "Server di download";
-"CHOOSE_DOWNLOAD_SERVER" = "Scegli il server di download";
 "DOWNLOAD_COMMENT" = "Salva informazioni sui commenti";
 "DOWNLOAD_COMMENT_DESC" = "Consente di copiare il testo del commento e di salvare il commento come immagine tenendo premuto a lungo sul pulsante dei tre puntini.";
 "DOWNLOAD_POST" = "Salva informazioni sui post";
 "DOWNLOAD_POST_DESC" = "Consente di copiare il testo del post e di salvare il post come immagine tenendo premuto a lungo.";
 "TRANSLATE_COMMENT" = "Traduci commento";
 "TRANSLATE_POST" = "Traduci post";
-"SERVER_EUROPRE1" = "Europa";
-"SERVER_ASIA1" = "Thailandia - Asia";
 "SHOW_OPTIONS" = "Mostra opzioni";
 "ENGLISH" = "Inglese";
 "TRANSLATION" = "Traduzione";
@@ -137,7 +131,6 @@
 "DOWNLOAD_METHOD" = "Metodo di download";
 "DOWNLOAD_METHOD_DESC" = "Come vengono scaricati i video. 'Sul dispositivo' funziona con le versioni più recenti di YouTube.";
 "METHOD_DIRECT" = "Diretto";
-"METHOD_SERVER" = "Server";
 "METHOD_ONDEVICE" = "Sul dispositivo (SABR)";
 
 "APPEARANCE" = "Aspetto";

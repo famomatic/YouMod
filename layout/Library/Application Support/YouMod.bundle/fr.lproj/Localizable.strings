@@ -107,24 +107,18 @@
 "THUMBNAIL_OPTIONS" = "Télécharger la miniature";
 "COPY" = "Copier";
 "COPIED_TO_CLIPBOARD" = "Copié dans le presse-papiers";
-"CONNECTING_TO_SERVER" = "Connexion au serveur...";
-"DOWNLOADING_TO_SERVER" = "Téléchargement vers le serveur...";
 "COPY_COMMENT_TEXT" = "Copier le texte du commentaire";
 "SAVE_COMMENT_IMAGE" = "Enregistrer le commentaire sous forme d'image";
 "COPY_COMMENT_IMAGE" = "Copier le commentaire sous forme d'image";
 "COPY_POST_TEXT" = "Copier le texte de la publication";
 "SAVE_POST_IMAGE" = "Enregistrer la publication sous forme d'image";
 "COPY_POST_IMAGE" = "Copier la publication sous forme d'image";
-"DOWNLOAD_SERVER" = "Serveur de téléchargement";
-"CHOOSE_DOWNLOAD_SERVER" = "Choisir le serveur de téléchargement";
 "DOWNLOAD_COMMENT" = "Enregistrer les informations du commentaire";
 "DOWNLOAD_COMMENT_DESC" = "Permet de copier le texte d'un commentaire et de l'enregistrer sous forme d'image par un appui long sur le bouton des trois points.";
 "DOWNLOAD_POST" = "Enregistrer les informations de la publication";
 "DOWNLOAD_POST_DESC" = "Permet de copier le texte d'une publication et de l'enregistrer sous forme d'image par un appui long.";
 "TRANSLATE_COMMENT" = "Traduire le commentaire";
 "TRANSLATE_POST" = "Traduire la publication";
-"SERVER_EUROPRE1" = "Europe";
-"SERVER_ASIA1" = "Thaïlande - Asie";
 "SHOW_OPTIONS" = "Afficher les options";
 "ENGLISH" = "Anglais";
 "TRANSLATION" = "Traduction";
@@ -137,7 +131,6 @@
 "DOWNLOAD_METHOD" = "Méthode de téléchargement";
 "DOWNLOAD_METHOD_DESC" = "Façon dont les vidéos sont téléchargées. 'Sur l'appareil' fonctionne sur les dernières versions de YouTube.";
 "METHOD_DIRECT" = "Direct";
-"METHOD_SERVER" = "Serveur";
 "METHOD_ONDEVICE" = "Sur l'appareil (SABR)";
 
 "APPEARANCE" = "Apparence";

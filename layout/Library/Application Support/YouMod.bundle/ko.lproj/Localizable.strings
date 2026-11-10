@@ -107,24 +107,18 @@
 "THUMBNAIL_OPTIONS" = "썸네일 다운로드";
 "COPY" = "복사";
 "COPIED_TO_CLIPBOARD" = "클립보드에 복사됨";
-"CONNECTING_TO_SERVER" = "서버에 연결 중...";
-"DOWNLOADING_TO_SERVER" = "서버로 다운로드 중...";
 "COPY_COMMENT_TEXT" = "댓글 텍스트 복사";
 "SAVE_COMMENT_IMAGE" = "댓글을 이미지로 저장";
 "COPY_COMMENT_IMAGE" = "댓글을 이미지로 복사";
 "COPY_POST_TEXT" = "게시물 텍스트 복사";
 "SAVE_POST_IMAGE" = "게시물을 이미지로 저장";
 "COPY_POST_IMAGE" = "게시물을 이미지로 복사";
-"DOWNLOAD_SERVER" = "다운로드 서버";
-"CHOOSE_DOWNLOAD_SERVER" = "다운로드 서버 선택";
 "DOWNLOAD_COMMENT" = "댓글 정보 저장";
 "DOWNLOAD_COMMENT_DESC" = "점 세 개 버튼을 길게 눌러 댓글 텍스트를 복사하거나 댓글을 이미지로 저장할 수 있습니다.";
 "DOWNLOAD_POST" = "게시물 정보 저장";
 "DOWNLOAD_POST_DESC" = "길게 눌러 게시물 텍스트를 복사하거나 게시물을 이미지로 저장할 수 있습니다.";
 "TRANSLATE_COMMENT" = "댓글 번역";
 "TRANSLATE_POST" = "게시물 번역";
-"SERVER_EUROPRE1" = "유럽";
-"SERVER_ASIA1" = "태국 - 아시아";
 "SHOW_OPTIONS" = "옵션 보기";
 "ENGLISH" = "영어";
 "TRANSLATION" = "번역";
@@ -137,7 +131,6 @@
 "DOWNLOAD_METHOD" = "다운로드 방식";
 "DOWNLOAD_METHOD_DESC" = "동영상을 다운로드하는 방식입니다. 기기 내 처리 방식은 최신 YouTube 버전에서 작동합니다.";
 "METHOD_DIRECT" = "직접";
-"METHOD_SERVER" = "서버";
 "METHOD_ONDEVICE" = "기기 내 처리 (SABR)";
 
 "APPEARANCE" = "화면 표시";

@@ -107,24 +107,18 @@
 "THUMBNAIL_OPTIONS" = "下载缩略图";
 "COPY" = "复制";
 "COPIED_TO_CLIPBOARD" = "已复制到剪贴板";
-"CONNECTING_TO_SERVER" = "正在连接服务器…";
-"DOWNLOADING_TO_SERVER" = "正在从服务器下载…";
 "COPY_COMMENT_TEXT" = "复制评论文字";
 "SAVE_COMMENT_IMAGE" = "保存评论图片";
 "COPY_COMMENT_IMAGE" = "复制评论图片";
 "COPY_POST_TEXT" = "复制帖子文字";
 "SAVE_POST_IMAGE" = "保存帖子图片";
 "COPY_POST_IMAGE" = "复制帖子图片";
-"DOWNLOAD_SERVER" = "下载服务器";
-"CHOOSE_DOWNLOAD_SERVER" = "选择下载服务器";
 "DOWNLOAD_COMMENT" = "保存评论信息";
 "DOWNLOAD_COMMENT_DESC" = "长按三点菜单按钮可复制评论文字或保存评论图片。";
 "DOWNLOAD_POST" = "保存帖子信息";
 "DOWNLOAD_POST_DESC" = "长按可复制帖子文字或保存帖子图片。";
 "TRANSLATE_COMMENT" = "翻译评论";
 "TRANSLATE_POST" = "翻译帖子";
-"SERVER_EUROPRE1" = "欧洲";
-"SERVER_ASIA1" = "泰国 - 亚洲";
 "SHOW_OPTIONS" = "显示选项";
 "ENGLISH" = "英语";
 "TRANSLATION" = "翻译";
@@ -137,7 +131,6 @@
 "DOWNLOAD_METHOD" = "下载方式";
 "DOWNLOAD_METHOD_DESC" = "视频的下载方式。设备端下载适用于最新版 YouTube。";
 "METHOD_DIRECT" = "直接下载";
-"METHOD_SERVER" = "服务器";
 "METHOD_ONDEVICE" = "设备端 (SABR)";
 
 "APPEARANCE" = "外观";

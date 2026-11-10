@@ -1341,11 +1341,6 @@ static NSString *YouModAudioOutputExtension(NSInteger output) {
     self.videoTempURL = YouModTemporaryFileURL(YouModFileExtensionForFormat(videoFormat));
     self.audioTempURL = YouModTemporaryFileURL(YouModFileExtensionForFormat(audioFormat));
     NSString *outputExtension = YouModMergedVideoOutputExtension(videoFormat, audioFormat);
-    if (INTFORVAL(DownloadMethod) == DownloadMethodServer) {
-        NSString *resolutionStr = [NSString stringWithFormat:@"%d", videoFormat.itag];
-        [self triggerSilentDownloadWithQuality:resolutionStr isAudio:NO videoID:vidID presenter:presenter];
-        return;
-    }
     [self showProgressWithTitle:LOC(@"DOWNLOADING_VIDEO") presenter:presenter];
 
     __weak typeof(self) weakSelf = self;
@@ -1544,11 +1539,6 @@ static YouModMediaFormat *YouModSABRStreamableVideoFormat(YouModMediaFormat *for
     NSString *tempFileName = [NSString stringWithFormat:@"Temp_%@", fileName];
     NSURL *downloadURL = YouModUniqueFileURL(tempFileName, YouModFileExtensionForFormat(audioFormat) ?: @"m4a");
     self.audioTempURL = downloadURL;
-    if (INTFORVAL(DownloadMethod) == DownloadMethodServer) {
-        [self triggerSilentDownloadWithQuality:nil isAudio:YES videoID:vidID presenter:presenter];
-        return;
-    }
-    
     [self showProgressWithTitle:LOC(@"DOWNLOADING_AUDIO") presenter:presenter];
     __weak typeof(self) weakSelf = self;
     
@@ -1872,129 +1862,6 @@ static YouModMediaFormat *YouModSABRStreamableVideoFormat(YouModMediaFormat *for
         }
     }    
     // We intentionally don't invalidate the shared session here if it's reused.
-}
-
-- (NSString *)serverEndpoint {
-    if (INTFORVAL(DownloadServerIndex) == 0) {
-        return @"https://appropriatenet2928.tail6a9ca7.ts.net/"; // Europe (@AppropriateNet2928)
-    } else if (INTFORVAL(DownloadServerIndex) == 1) {
-        return @"https://waterserver.freeddns.org/"; // Thailand - Asia (@Tonwalter888)
-    }
-    return @"";
-}
-
-- (void)triggerSilentDownloadWithQuality:(NSString *)quality isAudio:(BOOL)isAudio videoID:(NSString *)vidID presenter:(UIViewController *)presenter {
-    __weak typeof(self) weakSelf = self;
-    [self requestDownloadForVideoId:vidID isAudio:isAudio quality:quality presenter:presenter completion:^(NSURL *localURL, NSString *errorMsg) {
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf || strongSelf.cancelled) return;
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (!strongSelf || strongSelf.cancelled) return;
-            if (!localURL) { 
-                [strongSelf cancelWithMessage:errorMsg];
-                return; 
-            }
-            [strongSelf completeWithFileURL:localURL isVideo:!isAudio presenter:presenter];
-        });
-    }];
-}
-
-- (void)requestDownloadForVideoId:(NSString *)vId isAudio:(BOOL)isAudio quality:(NSString *)quality presenter:(UIViewController *)presenter completion:(void (^)(NSURL *localURL, NSString *errorMsg))completionBlock {
-    [self showProgressWithTitle:LOC(@"CONNECTING_TO_SERVER") presenter:presenter];
-    NSString *watchURL = [NSString stringWithFormat:@"https://www.youtube.com/watch?v=%@", vId];
-    [self startYTDMDownloadWithWatchURL:watchURL format:isAudio ? @"audio" : @"video" formatId:quality presenter:presenter completion:completionBlock];
-}
-
-- (void)startYTDMDownloadWithWatchURL:(NSString *)watchURL format:(NSString *)format formatId:(NSString *)formatId presenter:(UIViewController *)presenter completion:(void (^)(NSURL *localURL, NSString *errorMsg))completionBlock {
-    if (!self || self.cancelled) return;
-    NSString *urlStr = [[self serverEndpoint] stringByAppendingString:@"/api/download"];
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
-    [request setHTTPMethod:@"POST"];
-    [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-    
-    NSMutableDictionary *payload = [@{@"url": watchURL, @"format": format} mutableCopy];
-    if (formatId) payload[@"format_id"] = formatId;
-    request.HTTPBody = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
-    
-    [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        if (!self || self.cancelled) return;
-        if (error || !data) { completionBlock(nil, @"Server unreachable."); return; }
-        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-        
-        if (json[@"job_id"]) {
-            BOOL isAudioDl = [format isEqualToString:@"audio"];
-            [self pollJobStatus:json[@"job_id"] isAudio:isAudioDl presenter:presenter completion:completionBlock];
-        }
-        else {
-            completionBlock(nil, json[@"error"] ?: @"Job init failed.");
-        }
-    }] resume];
-}
-
-- (void)pollJobStatus:(NSString *)jobId isAudio:(BOOL)isAudio presenter:(UIViewController *)presenter completion:(void (^)(NSURL *localURL, NSString *errorMsg))completionBlock {
-    if (!self || self.cancelled) return;
-    
-    NSString *urlStr = [NSString stringWithFormat:@"%@/api/status/%@", [self serverEndpoint], jobId];
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
-    
-    [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        if (!self || self.cancelled) return;
-        if (error || !data) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ 
-                [self pollJobStatus:jobId isAudio:isAudio presenter:presenter completion:completionBlock]; 
-            });
-            return;
-        }
-        
-        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-        NSString *status = json[@"status"];
-        
-        if ([status isEqualToString:@"done"]) {
-            NSString *singleFileName = json[@"filename"];
-            
-            if (!singleFileName || singleFileName.length == 0) {
-                singleFileName = isAudio ? @"downloaded_file.mp3" : @"downloaded_file.mp4";
-            }
-            
-            [self downloadSingleFile:singleFileName isAudio:isAudio forJobId:jobId presenter:presenter completion:completionBlock];
-            
-        } else if ([status isEqualToString:@"error"]) {
-            completionBlock(nil, json[@"error"] ?: @"Error.");
-        } else {
-            dispatch_async(dispatch_get_main_queue(), ^{ 
-                [self updateProgressTitle:LOC(@"DOWNLOADING_TO_SERVER") progress:0.0f]; 
-            });
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ 
-                [self pollJobStatus:jobId isAudio:isAudio presenter:presenter completion:completionBlock]; 
-            });
-        }
-    }] resume];
-}
-
-- (void)downloadSingleFile:(NSString *)filename isAudio:(BOOL)isAudio forJobId:(NSString *)jobId presenter:(UIViewController *)presenter completion:(void (^)(NSURL *localURL, NSString *errorMsg))completionBlock {
-    if (!self || self.cancelled) return;
-    
-    self.downloadCompletionBlock = completionBlock;
-    
-    NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:filename];
-    self.destinationURL = [NSURL fileURLWithPath:tempPath];
-    
-    self.finishedCurrentFile = NO;
-    self.currentBytes = 0;
-    self.currentExpectedBytes = 0;
-    self.baseProgressTitle = isAudio ? LOC(@"DOWNLOADING_AUDIO") : LOC(@"DOWNLOADING_VIDEO");
-    
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self updateProgressTitle:self.baseProgressTitle progress:0.0f];
-    });
-
-    NSString *urlString = [NSString stringWithFormat:@"%@/api/file/%@", [self serverEndpoint], jobId];
-    
-    self.task = [self.session downloadTaskWithURL:[NSURL URLWithString:urlString]];
-    self.task.taskDescription = filename;
-    
-    [self.task resume];
 }
 
 @end
@@ -2454,9 +2321,8 @@ static void YouModShowAudioTrackSelectionSheet(YTPlayerViewController *player, U
         return;
     }
 
-    // Skip the audio-track chooser for a single format, or the server path (which
-    // can't fetch a chosen track). Direct and on-device SABR both honor the choice.
-    if (audioFormats.count == 1 || INTFORVAL(DownloadMethod) == DownloadMethodServer || INTFORVAL(DownloadMethod) == DownloadMethodOnDevice) {
+    // Skip the audio-track chooser for a single format or on-device SABR (picks the track itself).
+    if (audioFormats.count == 1 || INTFORVAL(DownloadMethod) == DownloadMethodOnDevice) {
         YouModMediaFormat *selectedFormat = YouModAutoAudioFormat(audioFormats, downloadVideo ? videoFormat : nil, INTFORVAL(AudioOutputFormat));
         if (downloadVideo) {
             YouModEnqueueDownload(player, videoFormat, selectedFormat, 0, presenter);

@@ -202,8 +202,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             YMToggle(YMLOC(@"ADD_SHORTS_DOWNLOAD"), YMLOC(@"ADD_SHORTS_DOWNLOAD_DESC"), AddDownloadToShorts),
             [YMTextSegment(YMLOC(@"POST_DOWNLOAD_ACTION"), PostDownloadAction, (@[YMLOC(@"POST_ACTION_SAVE_PHOTOS"), YMLOC(@"POST_ACTION_SHARE"), YMLOC(@"POST_ACTION_ASK"), YMLOC(@"POST_ACTION_KEEP")]), PostDownloadActionKeep) visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts, DownloadComment, DownloadPost]],
             [[YMTextSegment(YMLOC(@"AUDIO_TRACK"), AudioPreferIndex, (@[YMLOC(@"SHOW_OPTIONS"), YMLOC(@"ORIGINAL"), YMLOC(@"ENGLISH")]), 0) visibleWhenKey:DownloadMethod equals:0] visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
-            [YMPicker(YMLOC(@"DOWNLOAD_METHOD"), YMLOC(@"DOWNLOAD_METHOD_DESC"), DownloadMethod, (@[YMLOC(@"METHOD_DIRECT"), YMLOC(@"METHOD_SERVER"), YMLOC(@"METHOD_ONDEVICE")]), 0) visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
-            [[YMPicker(YMLOC(@"DOWNLOAD_SERVER"), YMLOC(@"CHOOSE_DOWNLOAD_SERVER"), DownloadServerIndex, (@[YMLOC(@"SERVER_EUROPRE1"), YMLOC(@"SERVER_ASIA1")]), 0) visibleWhenKey:DownloadMethod equals:1] visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
+            [YMPicker(YMLOC(@"DOWNLOAD_METHOD"), YMLOC(@"DOWNLOAD_METHOD_DESC"), DownloadMethod, (@[YMLOC(@"METHOD_DIRECT"), YMLOC(@"METHOD_ONDEVICE")]), 0) visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
             [YMHeader(YMLOC(@"DOWNLOAD_ADVANCED")) visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
             [YMPicker(YMLOC(@"DEFAULT_QUALITY"), YMLOC(@"DEFAULT_QUALITY_DESC"), DownloadDefaultQuality, (@[YMLOC(@"ASK_EVERY_TIME"), YMLOC(@"BEST_QUALITY"), @"2160p", @"1440p", @"1080p", @"720p", @"480p", @"360p"]), 0) visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
             [[YMTextSegment(YMLOC(@"PREFERRED_CODEC"), DownloadPreferredCodec, (@[YMLOC(@"AUTO"), @"VP9", @"AV1"]), 0) visibleWhenAnyBoolKey:@[UseFFmpeg]] visibleWhenAnyBoolKey:@[DownloadManager, AddDownloadToShorts]],
@@ -709,9 +708,18 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
 void YMRegisterDefaults(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
+        // The external-server download method was removed: 0 direct / 1 server / 2 on-device became
+        // 0 direct / 1 on-device. A saved server choice moves to on-device.
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        if (![defaults boolForKey:@"YouModDownloadMethodRenumbered"]) {
+            id saved = [defaults objectForKey:DownloadMethod];
+            if (saved) [defaults setInteger:([saved integerValue] == 0 ? 0 : DownloadMethodOnDevice) forKey:DownloadMethod];
+            [defaults removeObjectForKey:@"YouModDownloadServerIndex"];
+            [defaults setBool:YES forKey:@"YouModDownloadMethodRenumbered"];
+        }
         [[NSUserDefaults standardUserDefaults] registerDefaults:@{
             AutoClearCache: @YES,
-            DownloadMethod: @2,
+            DownloadMethod: @(DownloadMethodOnDevice),
             YTLogoIndex: @1,
             BackgroundPlayback: @YES,
             RadioMode: @YES,

@@ -107,24 +107,18 @@
 "THUMBNAIL_OPTIONS" = "ดาวน์โหลดปกคลิป";
 "COPY" = "คัดลอก";
 "COPIED_TO_CLIPBOARD" = "คัดลอกไปยังคลิปบอร์ดแล้ว";
-"CONNECTING_TO_SERVER" = "กำลังเชื่อมต่อกับเซิร์ฟเวอร์...";
-"DOWNLOADING_TO_SERVER" = "กำลังดาวน์โหลดไปยังเซิร์ฟเวอร์...";
 "COPY_COMMENT_TEXT" = "คัดลอกข้อความคอมเมนต์";
 "SAVE_COMMENT_IMAGE" = "บันทึกคอมเมนต์เป็นรูปภาพ";
 "COPY_COMMENT_IMAGE" = "คัดลอกคอมเมนต์เป็นรูปภาพ";
 "COPY_POST_TEXT" = "คัดลอกข้อความโพสต์";
 "SAVE_POST_IMAGE" = "บันทึกโพสต์เป็นรูปภาพ";
 "COPY_POST_IMAGE" = "คัดลอกโพสต์เป็นรูปภาพ";
-"DOWNLOAD_SERVER" = "เซิร์ฟเวอร์ดาวน์โหลด";
-"CHOOSE_DOWNLOAD_SERVER" = "เลือกเซิร์ฟเวอร์ดาวน์โหลด";
 "DOWNLOAD_COMMENT" = "บันทึกข้อมูลคอมเมนต์";
 "DOWNLOAD_COMMENT_DESC" = "อนุญาตให้คัดลอกข้อความคอมเมนต์และบันทึกคอมเมนต์เป็นรูปภาพโดยการแตะปุ่มสามจุดค้างไว้";
 "DOWNLOAD_POST" = "บันทึกข้อมูลโพสต์";
 "DOWNLOAD_POST_DESC" = "อนุญาตให้คัดลอกข้อความโพสต์และบันทึกโพสต์เป็นรูปภาพโดยการแตะค้างไว้";
 "TRANSLATE_COMMENT" = "แปลคอมเมนต์";
 "TRANSLATE_POST" = "แปลโพสต์";
-"SERVER_EUROPRE1" = "ยุโรป";
-"SERVER_ASIA1" = "ไทย - เอเชีย";
 "SHOW_OPTIONS" = "แสดงตัวเลือก";
 "ENGLISH" = "อังกฤษ";
 "TRANSLATION" = "แปลภาษา";
@@ -137,7 +131,6 @@
 "DOWNLOAD_METHOD" = "วิธีดาวน์โหลด";
 "DOWNLOAD_METHOD_DESC" = "วิธีการดาวน์โหลดวิดีโอ แบบอุปกรณ์จะใช้งานได้กับ YouTube เวอร์ชันล่าสุด";
 "METHOD_DIRECT" = "โดยตรง";
-"METHOD_SERVER" = "ผ่านเซิร์ฟเวอร์";
 "METHOD_ONDEVICE" = "บนอุปกรณ์ (SABR)";
 
 "APPEARANCE" = "ลักษณะ";

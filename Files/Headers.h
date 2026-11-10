@@ -85,7 +85,6 @@
 #import <YouTubeHeader/YTUIUtils.h>
 
 #define DownloadFix @"YouModDownloadFix"
-#define DownloadServerIndex @"YouModDownloadServerIndex"
 #define SABRDownload @"YouModSABRDownload"
 #define UseFFmpeg @"YouModUseFFmpeg"                       // allow FFmpeg-only formats (VP9/AV1/Opus, >1080p, HDR)
 #define FFmpegVideoContainer @"YouModFFmpegVideoContainer" // 0 = MP4, 1 = MKV for non-H.264 merges
@@ -97,8 +96,7 @@
 #define DownloadEmbedMetadata @"YouModDownloadEmbedMetadata"       // tag title/channel/link + cover art via FFmpeg
 #define DownloadMethod @"YouModDownloadMethod" // index into the "Download method" picker
 #define DownloadMethodDirect 0   // YouTube's built-in stream URLs
-#define DownloadMethodServer 1   // external server (triggerSilentDownload…)
-#define DownloadMethodOnDevice 2 // on-device SABR engine
+#define DownloadMethodOnDevice 1 // on-device SABR engine (was 2 while an external-server method sat at 1)
 
 extern void YMRegisterDefaults(void);
 #define IS_ENABLED(k) [[NSUserDefaults standardUserDefaults] boolForKey:k]
