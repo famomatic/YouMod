@@ -191,31 +191,34 @@ static NSMutableArray <YTIItemSectionRenderer *> *filteredArray(NSArray <YTIItem
 - (BOOL)enableSkippableAd { return YES; }
 %end
 
+// The ad/integrity signals YouTube attaches to its requests (spam signals, the ad context decorators) used to be
+// blanked. Playback started failing with error 14 ("Something went wrong. Refresh and try again later.") on
+// 2026-11-18; blanked signals are the suspected cause (not confirmed), so they are left alone unless this is on.
 %hook YTAdShieldUtils
-+ (id)spamSignalsDictionary { return @{}; }
-+ (id)spamSignalsDictionaryWithoutIDFA { return @{}; }
++ (id)spamSignalsDictionary { return IS_ENABLED(BlankAdSignals) ? @{} : %orig; }
++ (id)spamSignalsDictionaryWithoutIDFA { return IS_ENABLED(BlankAdSignals) ? @{} : %orig; }
 %end
 
 %hook YTDataUtils
-+ (id)spamSignalsDictionary { return @{ @"ms": @"" }; }
-+ (id)spamSignalsDictionaryWithoutIDFA { return @{}; }
++ (id)spamSignalsDictionary { return IS_ENABLED(BlankAdSignals) ? @{ @"ms": @"" } : %orig; }
++ (id)spamSignalsDictionaryWithoutIDFA { return IS_ENABLED(BlankAdSignals) ? @{} : %orig; }
 %end
 
 %hook YTAdsInnerTubeContextDecorator
 - (void)decorateContext:(id)context { 
-    id temp = nil;
+    id temp = IS_ENABLED(BlankAdSignals) ? nil : context;
     %orig(temp);
 }
 %end
 
 %hook YTAccountScopedAdsInnerTubeContextDecorator
 - (void)decorateContext:(id)context { 
-    id temp = nil;
+    id temp = IS_ENABLED(BlankAdSignals) ? nil : context;
     %orig(temp);
 }
 // 21.44+
 - (void)decorateContext:(id)context serviceType:(NSInteger)serviceType {
-    id temp = nil;
+    id temp = IS_ENABLED(BlankAdSignals) ? nil : context;
     %orig(temp, serviceType);
 }
 %end
@@ -223,7 +226,7 @@ static NSMutableArray <YTIItemSectionRenderer *> *filteredArray(NSArray <YTIItem
 // 21.44+: decorateContext: gained a serviceType argument and the protocol class got an Impl suffix
 %hook YTAdsInnerTubeContextDecoratorImpl
 - (void)decorateContext:(id)context serviceType:(NSInteger)serviceType {
-    id temp = nil;
+    id temp = IS_ENABLED(BlankAdSignals) ? nil : context;
     %orig(temp, serviceType);
 }
 %end
@@ -231,7 +234,7 @@ static NSMutableArray <YTIItemSectionRenderer *> *filteredArray(NSArray <YTIItem
 // 21.46+: the account-scoped decorator got the Impl suffix too (YTAccountScopedAdsInnerTubeContextDecorator is gone)
 %hook YTAccountScopedAdsInnerTubeContextDecoratorImpl
 - (void)decorateContext:(id)context serviceType:(NSInteger)serviceType {
-    id temp = nil;
+    id temp = IS_ENABLED(BlankAdSignals) ? nil : context;
     %orig(temp, serviceType);
 }
 %end

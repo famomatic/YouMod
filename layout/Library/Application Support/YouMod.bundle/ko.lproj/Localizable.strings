@@ -746,3 +746,5 @@
 "PANEL_TAB_MEMBERS" = "멤버십";
 "PANEL_HIDE_MEMBERS_TAB" = "멤버십 탭 숨기기";
 "PANEL_HIDE_MEMBERS_TAB_DESC" = "댓글 패널에서 멤버십 탭을 없앱니다. 패널을 다시 열 때 적용됩니다.";
+"BLANK_AD_SIGNALS" = "요청의 광고 신호 비우기";
+"BLANK_AD_SIGNALS_DESC" = "YouTube가 요청에 붙이는 광고/무결성 신호를 비웁니다. 서버가 이 값을 확인하기 시작해서 켜면 "문제가 발생했습니다"(오류 14)로 재생이 실패할 수 있습니다. 문제가 없을 때만 켜세요. 바꾼 뒤 앱을 다시 시작하세요.";
