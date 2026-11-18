@@ -238,6 +238,8 @@ static UIUserInterfaceIdiom ymForcedIdiom;
 
 %hook YTAutoCaptionsOnMuteController
 - (BOOL)shouldUpdateAutoCaptionsOnMuteWithUnpause:(BOOL)unpause { return NO; }
+// 21.46+: renamed
+- (BOOL)shouldUpdateAutoCaptionsOnMuteStateWithUnpause:(BOOL)unpause { return NO; }
 - (void)updateAutoCaptionsOnMuteVisibility {}
 - (void)updateAutoCaptionsOnMuteVisibilityWithVolume:(float)volume shouldUnpause:(BOOL)unpause {}
 %end

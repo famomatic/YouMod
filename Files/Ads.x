@@ -228,6 +228,14 @@ static NSMutableArray <YTIItemSectionRenderer *> *filteredArray(NSArray <YTIItem
 }
 %end
 
+// 21.46+: the account-scoped decorator got the Impl suffix too (YTAccountScopedAdsInnerTubeContextDecorator is gone)
+%hook YTAccountScopedAdsInnerTubeContextDecoratorImpl
+- (void)decorateContext:(id)context serviceType:(NSInteger)serviceType {
+    id temp = nil;
+    %orig(temp, serviceType);
+}
+%end
+
 // No ads coordinator at all also skipped what one does for an ad-free video: on
 // startPrerollAdBreak YouTube's own YTNoOpAdsPlaybackCoordinator immediately reports
 // the break finished, and -[YTLocalPlaybackController adsPlaybackCoordinator:

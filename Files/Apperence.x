@@ -43,9 +43,9 @@ static BOOL YMIsOpaqueDarkNeutral(UIColor *c) {
     return NO;
 }
 
-static void YMWrapPaletteBackgrounds(void) {
-    Class cls = NSClassFromString(@"YTCommonColorPalette");
-    if (!cls) return;
+static void YMWrapPaletteBackgroundsOf(NSString *className) {
+    Class cls = NSClassFromString(className);
+    if (!cls || ![cls instancesRespondToSelector:@selector(pageStyle)]) return;
     unsigned int count = 0;
     Method *methods = class_copyMethodList(cls, &count);
     for (unsigned int i = 0; i < count; i++) {
@@ -66,6 +66,14 @@ static void YMWrapPaletteBackgrounds(void) {
     free(methods);
 }
 
+static void YMWrapPaletteBackgrounds(void) {
+    YMWrapPaletteBackgroundsOf(@"YTCommonColorPalette");
+    YMWrapPaletteBackgroundsOf(@"YTTokensColorPalette"); // server-driven colour tokens
+}
+
+static BOOL YMAppIsDark(void);
+
+
 %group OLEDTheme
 %hook YTColor
 + (UIColor *)black0 { return [UIColor blackColor]; }
@@ -83,6 +91,18 @@ static void YMWrapPaletteBackgrounds(void) {
 - (UIColor *)raisedBackground { return self.pageStyle == 1 ? [UIColor blackColor] : %orig; }
 - (UIColor *)staticBrandBlack { return self.pageStyle == 1 ? [UIColor blackColor] : %orig; }
 - (UIColor *)generalBackgroundA { return self.pageStyle == 1 ? [UIColor blackColor] : %orig; }
+%end
+
+// 21.46+: the server sends feed video cards a dark-mode background colour (VideoWithContextModel.darkBackground),
+// painted on the card's root container node. Cards are black under the OLED theme.
+%hook ELMContainerNode
+- (void)setBackgroundColor:(UIColor *)color {
+    if (YMAppIsDark() && YMIsOpaqueDarkNeutral(color)) {
+        id parent = [(id)self respondsToSelector:@selector(supernode)] ? [(id)self valueForKey:@"supernode"] : nil;
+        if (parent && [parent isKindOfClass:%c(YTVideoWithContextNode)]) color = [UIColor blackColor];
+    }
+    %orig(color);
+}
 %end
 
 %hook YTInnerTubeCollectionViewController
