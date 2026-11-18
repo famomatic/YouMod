@@ -107,6 +107,49 @@ static NSInteger YMFilterPanelTabs(id model) {
 }
 %end
 
+// The swipeable cards under the player on 21.46 (Channel membership / Comments / ...) are a horizontally paged
+// ASCollectionView ("id.ui.video_metadata_carousel.collection"); the server puts Channel membership first. With
+// "first tab" set to Comments, the carousel is moved to the page that holds the comments teaser once it has laid out.
+static const void *kYMCarouselDoneKey = &kYMCarouselDoneKey;
+
+static BOOL YMViewHasDescendantWithID(UIView *view, NSString *ident, int depth) {
+    if ([view.accessibilityIdentifier isEqualToString:ident]) return YES;
+    if (depth <= 0) return NO;
+    for (UIView *sub in view.subviews) if (YMViewHasDescendantWithID(sub, ident, depth - 1)) return YES;
+    return NO;
+}
+
+static void YMCarouselShowComments(UIScrollView *cv, int tries) {
+    if (!cv.window || objc_getAssociatedObject(cv, kYMCarouselDoneKey)) return;
+    UIView *target = nil;
+    for (UIView *cell in cv.subviews) {
+        if (![NSStringFromClass(cell.class) containsString:@"CollectionViewCell"]) continue;
+        if (YMViewHasDescendantWithID(cell, @"id.ui.comments_entry_point_teaser", 14)) { target = cell; break; }
+    }
+    if (!target) {
+        if (tries < 10) {
+            __weak UIScrollView *weakCV = cv;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                UIScrollView *strong = weakCV;
+                if (strong) YMCarouselShowComments(strong, tries + 1);
+            });
+        }
+        return;
+    }
+    objc_setAssociatedObject(cv, kYMCarouselDoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    CGFloat x = target.frame.origin.x;
+    if (x > 0.5 && fabs(cv.contentOffset.x - x) > 0.5) [cv setContentOffset:CGPointMake(x, cv.contentOffset.y) animated:NO];
+}
+
+%hook ASCollectionView
+- (void)didMoveToWindow {
+    %orig;
+    if (INTFORVAL(PanelDefaultTab) != 1 || !self.window) return;
+    if (![self.accessibilityIdentifier isEqualToString:@"id.ui.video_metadata_carousel.collection"]) return;
+    YMCarouselShowComments((UIScrollView *)self, 0);
+}
+%end
+
 %ctor {
     YMRegisterDefaults();
     %init;
