@@ -8,10 +8,10 @@
 #import "Headers.h"
 #import <dlfcn.h>
 
-typedef void (*YMYTV1ProgressFn)(void *ctx, int64_t downloaded, int64_t total);
-typedef void (*YMYTV1DoneFn)(void *ctx, const char *path, int itag, const char *mime, const char *error);
+typedef void (*YMYTV1ProgressFn)(uintptr_t ctx, int64_t downloaded, int64_t total);
+typedef void (*YMYTV1DoneFn)(uintptr_t ctx, const char *path, int itag, const char *mime, const char *error);
 typedef int64_t (*YMYTV1DownloadFn)(const char *videoID, int itag, int audio, int height, int fps, const char *mime,
-                                    const char *dir, const char *base, YMYTV1ProgressFn progress, YMYTV1DoneFn done, void *ctx);
+                                    const char *dir, const char *base, YMYTV1ProgressFn progress, YMYTV1DoneFn done, uintptr_t ctx);
 typedef void (*YMYTV1CancelFn)(int64_t handle);
 typedef char *(*YMYTV1VersionFn)(void);
 typedef void (*YMYTV1FreeFn)(char *p);
@@ -76,8 +76,8 @@ static NSMutableDictionary<NSNumber *, YMYTV1Job *> *YMYTV1Jobs(void) {
     return jobs;
 }
 
-static YMYTV1Job *YMYTV1JobForToken(void *ctx, BOOL remove) {
-    NSNumber *key = @((uintptr_t)ctx);
+static YMYTV1Job *YMYTV1JobForToken(uintptr_t ctx, BOOL remove) {
+    NSNumber *key = @(ctx);
     NSMutableDictionary *jobs = YMYTV1Jobs();
     @synchronized(jobs) {
         YMYTV1Job *job = jobs[key];
@@ -86,12 +86,12 @@ static YMYTV1Job *YMYTV1JobForToken(void *ctx, BOOL remove) {
     }
 }
 
-static void YMYTV1ProgressTrampoline(void *ctx, int64_t downloaded, int64_t total) {
+static void YMYTV1ProgressTrampoline(uintptr_t ctx, int64_t downloaded, int64_t total) {
     YMYTV1Job *job = YMYTV1JobForToken(ctx, NO);
     if (job.progress) job.progress(downloaded, total);
 }
 
-static void YMYTV1DoneTrampoline(void *ctx, const char *path, int itag, const char *mime, const char *error) {
+static void YMYTV1DoneTrampoline(uintptr_t ctx, const char *path, int itag, const char *mime, const char *error) {
     YMYTV1Job *job = YMYTV1JobForToken(ctx, YES);
     if (!job.done) return;
     NSString *p = path ? @(path) : nil;
@@ -113,7 +113,7 @@ static int64_t YMYTV1Start(NSString *videoID, YouModMediaFormat *format, BOOL au
     }
     int64_t handle = ymYTV1Download(videoID.UTF8String, format.itag, audio ? 1 : 0, format.resolution, format.fps,
                                     (format.mimeType ?: @"").UTF8String, dir.fileSystemRepresentation, base.UTF8String,
-                                    YMYTV1ProgressTrampoline, YMYTV1DoneTrampoline, (void *)token);
+                                    YMYTV1ProgressTrampoline, YMYTV1DoneTrampoline, token);
     job.handle = handle;
     return handle;
 }

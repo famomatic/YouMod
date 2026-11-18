@@ -14,10 +14,13 @@ package main
 /*
 #include <stdint.h>
 #include <stdlib.h>
-typedef void (*ytv1_progress_fn)(void *ctx, int64_t downloaded, int64_t total);
-typedef void (*ytv1_done_fn)(void *ctx, const char *path, int itag, const char *mime, const char *error);
-static inline void ytv1_call_progress(ytv1_progress_fn f, void *ctx, int64_t d, int64_t t) { if (f) f(ctx, d, t); }
-static inline void ytv1_call_done(ytv1_done_fn f, void *ctx, const char *p, int itag, const char *m, const char *e) { if (f) f(ctx, p, itag, m, e); }
+// The callback context is an opaque token chosen by the caller (a small integer), so it is carried as
+// uintptr_t: held in a Go pointer-typed variable a value like 1 makes the Go runtime abort ("invalid pointer
+// found on stack") the next time a goroutine stack grows, which looks like a crash without any error.
+typedef void (*ytv1_progress_fn)(uintptr_t ctx, int64_t downloaded, int64_t total);
+typedef void (*ytv1_done_fn)(uintptr_t ctx, const char *path, int itag, const char *mime, const char *error);
+static inline void ytv1_call_progress(ytv1_progress_fn f, uintptr_t ctx, int64_t d, int64_t t) { if (f) f(ctx, d, t); }
+static inline void ytv1_call_done(ytv1_done_fn f, uintptr_t ctx, const char *p, int itag, const char *m, const char *e) { if (f) f(ctx, p, itag, m, e); }
 */
 import "C"
 
@@ -43,7 +46,7 @@ var ytv1Commit = "unknown"
 type job struct {
 	cancel   context.CancelFunc
 	progress C.ytv1_progress_fn
-	ctx      unsafe.Pointer
+	ctx      C.uintptr_t
 	key      string // videoID|itag being downloaded, for progress routing
 }
 
@@ -193,7 +196,7 @@ func pickFormat(formats []client.FormatInfo, itag int, wantAudio bool, height, f
 
 //export ytv1_download
 func ytv1_download(cVideoID *C.char, cItag C.int, cAudio C.int, cHeight C.int, cFPS C.int, cMime *C.char,
-	cDir *C.char, cBase *C.char, progress C.ytv1_progress_fn, done C.ytv1_done_fn, cbctx unsafe.Pointer) C.int64_t {
+	cDir *C.char, cBase *C.char, progress C.ytv1_progress_fn, done C.ytv1_done_fn, cbctx C.uintptr_t) C.int64_t {
 	videoID := C.GoString(cVideoID)
 	itag := int(cItag)
 	wantAudio := cAudio != 0
