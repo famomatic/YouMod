@@ -740,3 +740,9 @@
 "HOME_TAB_HIDE_DESC" = "홈 화면 상단에서 이 탭을 제거합니다. 홈이 다시 불러와질 때 적용됩니다.";
 "HOME_TAB_HIDE_OTHERS" = "나머지 탭 모두 숨기기";
 "HOME_TAB_HIDE_OTHERS_DESC" = "홈만 남기고 다른 모든 상단 탭을 제거합니다. YouMod에 스위치가 없는 탭도 포함됩니다.";
+"PANEL_DEFAULT_TAB" = "댓글 패널 기본 탭";
+"PANEL_DEFAULT_TAB_DESC" = "플레이어 아래 댓글 패널(좌우로 넘기는 탭)에서 처음 보여줄 탭입니다. 기본은 YouTube 설정을 따릅니다.";
+"PANEL_TAB_COMMENTS" = "댓글";
+"PANEL_TAB_MEMBERS" = "멤버십";
+"PANEL_HIDE_MEMBERS_TAB" = "멤버십 탭 숨기기";
+"PANEL_HIDE_MEMBERS_TAB_DESC" = "댓글 패널에서 멤버십 탭을 없앱니다. 패널을 다시 열 때 적용됩니다.";

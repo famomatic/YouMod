@@ -353,6 +353,8 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             YMToggle(YMLOC(@"HIDE_RELATED_VIDEOS"), YMLOC(@"HIDE_RELATED_VIDEOS_DESC"), HideRelatedVideos),
             YMToggle(YMLOC(@"HIDE_COMMENTS_SECTION"), YMLOC(@"HIDE_COMMENTS_SECTION_DESC"), HideCommentsSection),
             YMToggle(YMLOC(@"HIDE_COMMENTS_PREVIEW"), YMLOC(@"HIDE_COMMENTS_PREVIEW_DESC"), HideCommentsPreview),
+            YMPicker(YMLOC(@"PANEL_DEFAULT_TAB"), YMLOC(@"PANEL_DEFAULT_TAB_DESC"), PanelDefaultTab, (@[YMLOC(@"DEFAULT"), YMLOC(@"PANEL_TAB_COMMENTS"), YMLOC(@"PANEL_TAB_MEMBERS")]), 1),
+            YMToggle(YMLOC(@"PANEL_HIDE_MEMBERS_TAB"), YMLOC(@"PANEL_HIDE_MEMBERS_TAB_DESC"), PanelHideMembersTab),
             YMPicker(YMLOC(@"DRC_AUDIO_OPTIONS"), YMLOC(@"DRC_AUDIO_OPTIONS_DESC"), AutoDRCAudioIndex, (@[YMLOC(@"DEFAULT"), YMLOC(@"ENABLED"), YMLOC(@"DISABLED")]), 0),
             YMToggle(YMLOC(@"REMOVE_VIDEO_LIKE_BUTTON"), YMLOC(@"REMOVE_VIDEO_LIKE_BUTTON_DESC"), RemoveVideoLikeButton),
             YMToggle(YMLOC(@"REMOVE_VIDEO_DISLIKE_BUTTON"), YMLOC(@"REMOVE_VIDEO_DISLIKE_BUTTON_DESC"), RemoveVideoDislikeButton),
@@ -733,6 +735,7 @@ void YMRegisterDefaults(void) {
             DownloadEmbedMetadata: @YES,
             NoPauseOnFullscreenPanel: @YES,
             PostOriginalAspect: @YES,
+            PanelDefaultTab: @1, // Comments - the Members tab had become the first one
             PostDownloadAction: @(PostDownloadActionKeep), // Photos only when asked for
             SBButtonKey: @YES,
             DisableHints: @YES,

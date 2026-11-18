@@ -679,3 +679,9 @@
 "MORE_FROM_CHANNEL" = "More from This Channel";
 "SABR_FORMAT_SWITCHED" = "%@ isn't streamed to this device - downloading the same quality as %@";
 "COPY_ERROR" = "Copy error";
+"PANEL_DEFAULT_TAB" = "Comments panel: first tab";
+"PANEL_DEFAULT_TAB_DESC" = "Which tab of the comments panel under the player (swipe left/right) is shown first. Default follows YouTube.";
+"PANEL_TAB_COMMENTS" = "Comments";
+"PANEL_TAB_MEMBERS" = "Members";
+"PANEL_HIDE_MEMBERS_TAB" = "Hide Members tab";
+"PANEL_HIDE_MEMBERS_TAB_DESC" = "Removes the Members tab from the comments panel. Takes effect the next time the panel opens.";

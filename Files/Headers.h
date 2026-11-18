@@ -270,6 +270,9 @@ extern void YMRegisterDefaults(void);
 #define HomeTabHideLive @"YouModHomeTabHideLive"
 #define HomeTabHideMore @"YouModHomeTabHideMore"
 #define HomeTabHideOthers @"YouModHomeTabHideOthers"
+// Comments panel tabs under the player (Comments / Members)
+#define PanelHideMembersTab @"YouModPanelHideMembersTab"
+#define PanelDefaultTab @"YouModPanelDefaultTab" // 0 = YouTube decides, 1 = Comments, 2 = Members
 // Miscellaneous
 #define BackgroundPlayback @"YouModEnablesBackgroundPlayback"
 #define DisablesShortsPiP @"YouModTrytoDisablesShortsPiP"

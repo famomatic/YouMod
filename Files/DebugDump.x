@@ -7,6 +7,7 @@
 // Used to find the identifiers/classes the filters hook into after YouTube changes its UI.
 
 extern NSString *YMPlaybackErrorLog(void);
+extern NSString *YMPanelTabsLog(void);
 
 static const NSUInteger kYMDumpMaxLines = 60000;
 
@@ -101,6 +102,9 @@ static NSString *YMBuildDump(void) {
 
     [out appendString:@"\n=== RECENT PLAYBACK ERRORS ===\n"];
     [out appendFormat:@"%@\n", YMPlaybackErrorLog()];
+
+    [out appendString:@"\n=== COMMENTS PANEL TABS ===\n"];
+    [out appendFormat:@"%@\n", YMPanelTabsLog()];
 
     NSMutableString *tree = [NSMutableString string];
     NSMutableDictionary<NSString *, NSMutableDictionary *> *ids = [NSMutableDictionary dictionary];
