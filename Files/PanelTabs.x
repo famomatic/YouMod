@@ -100,7 +100,8 @@ static NSInteger YMFilterPanelTabs(id model) {
     if (index >= 0) {
         // YouTube has laid the pages out by now; moving to the tab is the same call a tap on its title makes
         dispatch_async(dispatch_get_main_queue(), ^{
-            if ([self respondsToSelector:@selector(switchToTabAtIndex:)]) ((void (*)(id, SEL, NSUInteger))objc_msgSend)(self, @selector(switchToTabAtIndex:), (NSUInteger)index);
+            id me = (id)self; // forward-declared class: no direct messaging
+            if ([me respondsToSelector:@selector(switchToTabAtIndex:)]) ((void (*)(id, SEL, NSUInteger))objc_msgSend)(me, @selector(switchToTabAtIndex:), (NSUInteger)index);
         });
     }
 }
