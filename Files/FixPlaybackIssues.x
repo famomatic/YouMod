@@ -1,5 +1,6 @@
 // Some are adapted from https://github.com/Mark02-2012/YTPlaybackFix
 #import "Headers.h"
+#import <objc/message.h>
 
 /* Old method
 static BOOL isReloaded = NO;
@@ -24,9 +25,34 @@ static BOOL isReloaded = NO;
 %end
 */
 
+// Recent playback errors, kept for the UI dump (a "playback fails after N seconds" report needs the real error).
+static NSMutableArray<NSString *> *gYMPlaybackErrors;
+NSString *YMPlaybackErrorLog(void) {
+    @synchronized ([NSNull null]) {
+        return gYMPlaybackErrors.count ? [gYMPlaybackErrors componentsJoinedByString:@"\n"] : @"(none since launch)";
+    }
+}
+static void YMRecordPlaybackError(NSError *error, id controller) {
+    if (!error) return;
+    NSString *info = [[error.userInfo description] stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
+    if (info.length > 700) info = [[info substringToIndex:700] stringByAppendingString:@"…"];
+    NSString *time = @"?";
+    @try {
+        id player = [controller valueForKey:@"parentViewController"];
+        if ([player respondsToSelector:@selector(currentVideoMediaTime)]) time = [NSString stringWithFormat:@"%.1f", ((CGFloat (*)(id, SEL))objc_msgSend)(player, @selector(currentVideoMediaTime))];
+    } @catch (__unused NSException *e) {}
+    NSString *entry = [NSString stringWithFormat:@"%@ at media time %@s: %@ code %ld - %@ | %@", [NSDate date], time, error.domain, (long)error.code, error.localizedDescription, info];
+    @synchronized ([NSNull null]) {
+        if (!gYMPlaybackErrors) gYMPlaybackErrors = [NSMutableArray array];
+        [gYMPlaybackErrors addObject:entry];
+        if (gYMPlaybackErrors.count > 20) [gYMPlaybackErrors removeObjectAtIndex:0];
+    }
+}
+
 %hook YTMainAppVideoPlayerOverlayViewController
 - (void)handleError:(NSError *)error {
-    if (error && [error.domain isEqualToString:@"com.google.ios.youtube.ErrorDomain.playback"] && error.code == 14) {
+    YMRecordPlaybackError(error, self);
+    if (IS_ENABLED(FixPlaybackIssues) && error && [error.domain isEqualToString:@"com.google.ios.youtube.ErrorDomain.playback"] && error.code == 14) {
         YTPlayerViewController *playerViewController = self.parentViewController;
         if (![playerViewController.UIDelegate isKindOfClass:%c(YTWatchController)]) return;
         YTWatchController *watchController = (YTWatchController *)playerViewController.UIDelegate;
@@ -41,6 +67,5 @@ static BOOL isReloaded = NO;
 
 %ctor {
     YMRegisterDefaults();
-    if (!IS_ENABLED(FixPlaybackIssues)) return;
     %init;
 }

@@ -1,5 +1,6 @@
 #import "Headers.h"
 #import <objc/runtime.h>
+#import <objc/message.h>
 
 // Shared dynamic colors for the OLED theme. These used to be built per view with a
 // provider block that captured the view itself (view -> backgroundColor -> block ->
@@ -25,6 +26,44 @@ static UIColor *YMOLEDBlackOrWhite(void) {
         }];
     });
     return color;
+}
+
+// YouTube keeps adding palette entries (21.44 feed cards suddenly drew a dark grey card colour that none of the
+// hooks above names). Instead of chasing every name, every colour getter of the palette that looks like a
+// background/surface is wrapped at runtime: under the dark page style an opaque, neutral dark grey becomes black.
+// Translucent colours (scrims, overlays) and anything lighter than a dark grey are left alone.
+static BOOL YMIsOpaqueDarkNeutral(UIColor *c) {
+    if (![c isKindOfClass:[UIColor class]]) return NO;
+    CGFloat r = 0, g = 0, b = 0, a = 0, w = 0;
+    if ([c getRed:&r green:&g blue:&b alpha:&a]) {
+        CGFloat hi = MAX(r, MAX(g, b)), lo = MIN(r, MIN(g, b));
+        return a > 0.98 && hi < 0.30 && (hi - lo) < 0.08 && hi > 0.001;
+    }
+    if ([c getWhite:&w alpha:&a]) return a > 0.98 && w < 0.30 && w > 0.001;
+    return NO;
+}
+
+static void YMWrapPaletteBackgrounds(void) {
+    Class cls = NSClassFromString(@"YTCommonColorPalette");
+    if (!cls) return;
+    unsigned int count = 0;
+    Method *methods = class_copyMethodList(cls, &count);
+    for (unsigned int i = 0; i < count; i++) {
+        Method m = methods[i];
+        SEL sel = method_getName(m);
+        const char *types = method_getTypeEncoding(m);
+        if (!types || strcmp(types, "@16@0:8") != 0) continue;
+        NSString *name = NSStringFromSelector(sel);
+        if ([name rangeOfString:@"background|surface|raised|elevated|card" options:NSRegularExpressionSearch | NSCaseInsensitiveSearch].location == NSNotFound) continue;
+        IMP orig = method_getImplementation(m);
+        IMP wrapped = imp_implementationWithBlock(^UIColor *(id me) {
+            UIColor *c = ((UIColor *(*)(id, SEL))orig)(me, sel);
+            if (((NSInteger (*)(id, SEL))objc_msgSend)(me, @selector(pageStyle)) == 1 && YMIsOpaqueDarkNeutral(c)) return [UIColor blackColor];
+            return c;
+        });
+        method_setImplementation(m, wrapped);
+    }
+    free(methods);
 }
 
 %group OLEDTheme
@@ -281,6 +320,7 @@ static BOOL OLEDKeyboardIsDarkMode(UIView *view) {
 %ctor {
     YMRegisterDefaults();
     if (IS_ENABLED(OLEDTheme)) {
+        YMWrapPaletteBackgrounds();
         %init(OLEDTheme);
     }
     if (IS_ENABLED(OLEDKeyboard)) {

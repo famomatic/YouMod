@@ -6,6 +6,8 @@
 // plus a summary of every accessibility identifier to a text file and offers it through the share sheet.
 // Used to find the identifiers/classes the filters hook into after YouTube changes its UI.
 
+extern NSString *YMPlaybackErrorLog(void);
+
 static const NSUInteger kYMDumpMaxLines = 60000;
 
 static NSString *YMTrim(NSString *s, NSUInteger max) {
@@ -36,6 +38,12 @@ static void YMDumpView(UIView *v, int depth, NSMutableString *out, NSMutableDict
     NSMutableString *line = [NSMutableString stringWithFormat:@"%*s%@ (%.0f,%.0f %.0fx%.0f)", depth * 2, "", cls, f.origin.x, f.origin.y, f.size.width, f.size.height];
     if (v.hidden) [line appendString:@" hidden"];
     if (v.alpha < 0.01) [line appendString:@" alpha0"];
+
+    // background colour: grey backgrounds under the OLED theme are found by their colour here
+    CGFloat r = 0, g = 0, b = 0, a = 0;
+    UIColor *bg = v.backgroundColor;
+    if (bg && [bg getRed:&r green:&g blue:&b alpha:&a] && a > 0.01) [line appendFormat:@" bg=#%02X%02X%02X%@", (int)lroundf(r * 255), (int)lroundf(g * 255), (int)lroundf(b * 255), a < 0.99 ? [NSString stringWithFormat:@"/%.2f", a] : @""];
+    else if (bg && [bg getWhite:&r alpha:&a] && a > 0.01) [line appendFormat:@" bg=w%.2f%@", r, a < 0.99 ? [NSString stringWithFormat:@"/%.2f", a] : @""];
 
     NSString *iden = v.accessibilityIdentifier;
     NSString *label = v.accessibilityLabel;
@@ -90,6 +98,9 @@ static NSString *YMBuildDump(void) {
         Class k = NSClassFromString(c);
         [out appendFormat:@"%-48s %@\n", c.UTF8String, k ? [NSString stringWithFormat:@"yes (super %@)", NSStringFromClass(class_getSuperclass(k))] : @"NO"];
     }
+
+    [out appendString:@"\n=== RECENT PLAYBACK ERRORS ===\n"];
+    [out appendFormat:@"%@\n", YMPlaybackErrorLog()];
 
     NSMutableString *tree = [NSMutableString string];
     NSMutableDictionary<NSString *, NSMutableDictionary *> *ids = [NSMutableDictionary dictionary];
