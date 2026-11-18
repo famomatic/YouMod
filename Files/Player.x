@@ -606,10 +606,13 @@ static void YouModAddEndTime(YTPlayerViewController *self, YTSingleVideoControll
 - (void)setCinematicContainerView:(id)arg { if (!IS_ENABLED(RemoveAmbiant)) %orig; }
 %end
 
+extern BOOL YMPlaybackResumeActive(void); // FixPlaybackIssues.x
+
 // Disable Autoplay 
 %hook YTPlaybackConfig
 - (void)setStartPlayback:(BOOL)arg1 { 
-    BOOL temp = IS_ENABLED(StopAutoplayVideo) ? NO : arg1;
+    // not while the automatic reload after a playback error resumes the video: it has to start playing
+    BOOL temp = (IS_ENABLED(StopAutoplayVideo) && !YMPlaybackResumeActive()) ? NO : arg1;
     %orig(temp);
 }
 %end
