@@ -35,7 +35,9 @@ NSString *YMPlaybackErrorLog(void) {
 static void YMRecordPlaybackError(NSError *error, id controller) {
     if (!error) return;
     NSString *info = [[error.userInfo description] stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
-    if (info.length > 700) info = [[info substringToIndex:700] stringByAppendingString:@"…"];
+    if (info.length > 1800) info = [[info substringToIndex:1800] stringByAppendingString:@"…"];
+    NSError *underlying = error.userInfo[NSUnderlyingErrorKey];
+    if (underlying) info = [info stringByAppendingFormat:@" | underlying: %@ %ld %@", underlying.domain, (long)underlying.code, underlying.localizedDescription];
     NSString *time = @"?";
     @try {
         id player = [controller valueForKey:@"parentViewController"];
@@ -52,7 +54,16 @@ static void YMRecordPlaybackError(NSError *error, id controller) {
 %hook YTMainAppVideoPlayerOverlayViewController
 - (void)handleError:(NSError *)error {
     YMRecordPlaybackError(error, self);
+    // At most 3 automatic reloads a minute, so a video the server keeps refusing ends on the error screen
+    static NSMutableArray<NSDate *> *reloads;
+    BOOL reloadOK = NO;
     if (IS_ENABLED(FixPlaybackIssues) && error && [error.domain isEqualToString:@"com.google.ios.youtube.ErrorDomain.playback"] && error.code == 14) {
+        if (!reloads) reloads = [NSMutableArray array];
+        NSDate *now = [NSDate date];
+        for (NSInteger i = (NSInteger)reloads.count - 1; i >= 0; i--) if ([now timeIntervalSinceDate:reloads[i]] > 60) [reloads removeObjectAtIndex:i];
+        if (reloads.count < 3) { [reloads addObject:now]; reloadOK = YES; }
+    }
+    if (reloadOK) {
         YTPlayerViewController *playerViewController = self.parentViewController;
         if (![playerViewController.UIDelegate isKindOfClass:%c(YTWatchController)]) return;
         YTWatchController *watchController = (YTWatchController *)playerViewController.UIDelegate;

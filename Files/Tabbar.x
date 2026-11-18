@@ -309,6 +309,22 @@ static void YMOpenLinkFromClipboard(UIViewController *presentingVC, BOOL isRunti
     }
 }
 
+// Legacy bar, icon-only (labels hidden): the items YouTube builds from the server's renderers (Home, You) keep the
+// collapsed label's space and sit ~8pt lower than the ones created here (Subscriptions, Downloads), whose button is
+// centred - the bar looked uneven. Centre every item's button in the item.
+static void YMCenterLegacyTabButton(YTPivotBarItemView *item) {
+    UIView *button = item.navigationButton;
+    if (!button || button.hidden || button.bounds.size.width < 1) return;
+    UIView *bar = item.superview;
+    BOOL legacy = NO;
+    for (int i = 0; i < 3 && bar; i++, bar = bar.superview) if ([bar isKindOfClass:%c(YTPivotBarView)]) { legacy = YES; break; }
+    if (!legacy) return;
+    UILabel *label = [button respondsToSelector:@selector(titleLabel)] ? ((UIButton *)button).titleLabel : nil;
+    if (label && !label.hidden && label.text.length > 0) return; // a label is shown: YouTube's own layout
+    CGFloat mid = CGRectGetMidY(item.bounds);
+    if (fabs(button.center.y - mid) > 0.5) button.center = CGPointMake(button.center.x, mid);
+}
+
 static void YMUpdateFloatBarLabel(YTPivotBarItemView *item);
 static BOOL isGestureRegistered = NO;
 // Hide Tab Labels + long-press on the first tab to open Manage Tabs
@@ -339,6 +355,7 @@ static BOOL isGestureRegistered = NO;
 - (void)layoutSubviews {
     %orig;
     YMUpdateFloatBarLabel(self);
+    YMCenterLegacyTabButton(self);
     if (IS_ENABLED(HideTabLabels) && self.navigationButton.titleLabel.text.length > 0) {
         [self.navigationButton setTitle:@"" forState:UIControlStateNormal];
         self.navigationButton.titleLabel.text = @"";

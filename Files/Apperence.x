@@ -93,15 +93,39 @@ static BOOL YMAppIsDark(void);
 - (UIColor *)generalBackgroundA { return self.pageStyle == 1 ? [UIColor blackColor] : %orig; }
 %end
 
-// 21.46+: the server sends feed video cards a dark-mode background colour (VideoWithContextModel.darkBackground),
-// painted on the card's root container node. Cards are black under the OLED theme.
+// 21.46+: the server sends feed video cards a dark-mode background colour (VideoWithContextModel.darkBackground).
+// It is drawn on the card's root container node, either as a plain background colour or as the fill of a
+// resizable rounded image (that is where the rounded card corners come from). Cards are black under the OLED
+// theme. Only nodes directly under the video card node are touched, so chips and buttons inside keep their colours.
+static BOOL YMIsNeutral(CGFloat r, CGFloat g, CGFloat b) { return MAX(r, MAX(g, b)) - MIN(r, MIN(g, b)) < 0.08; }
+
+// An opaque dark grey, or a faint translucent white that reads as dark grey over black
+static BOOL YMIsGreyCardFill(UIColor *c) {
+    if (![c isKindOfClass:[UIColor class]]) return NO;
+    CGFloat r = 0, g = 0, b = 0, a = 0, w = 0;
+    if ([c getRed:&r green:&g blue:&b alpha:&a]) {
+        if (!YMIsNeutral(r, g, b)) return NO;
+    } else if ([c getWhite:&w alpha:&a]) {
+        r = g = b = w;
+    } else return NO;
+    CGFloat hi = MAX(r, MAX(g, b)), lo = MIN(r, MIN(g, b));
+    if (a > 0.98) return hi < 0.30 && hi > 0.001;
+    return a > 0.01 && a < 0.35 && lo > 0.7;
+}
+
+static BOOL YMNodeIsVideoCardRoot(id node) {
+    id parent = [node respondsToSelector:@selector(supernode)] ? [node valueForKey:@"supernode"] : nil;
+    return parent && [parent isKindOfClass:%c(YTVideoWithContextNode)];
+}
+
 %hook ELMContainerNode
 - (void)setBackgroundColor:(UIColor *)color {
-    if (YMAppIsDark() && YMIsOpaqueDarkNeutral(color)) {
-        id parent = [(id)self respondsToSelector:@selector(supernode)] ? [(id)self valueForKey:@"supernode"] : nil;
-        if (parent && [parent isKindOfClass:%c(YTVideoWithContextNode)]) color = [UIColor blackColor];
-    }
+    if (YMAppIsDark() && YMIsGreyCardFill(color) && YMNodeIsVideoCardRoot((id)self)) color = [UIColor blackColor];
     %orig(color);
+}
+- (id)resizableRoundedImageWithCornerRadius:(CGFloat)radius fillColor:(UIColor *)fill borderColor:(UIColor *)border borderWidth:(CGFloat)width isBoosted:(BOOL *)boosted {
+    if (YMAppIsDark() && YMIsGreyCardFill(fill) && YMNodeIsVideoCardRoot((id)self)) fill = [UIColor blackColor];
+    return %orig(radius, fill, border, width, boosted);
 }
 %end
 

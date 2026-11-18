@@ -735,6 +735,7 @@ void YMRegisterDefaults(void) {
             DownloadEmbedMetadata: @YES,
             NoPauseOnFullscreenPanel: @YES,
             PostOriginalAspect: @YES,
+            FixPlaybackIssues: @YES, // 21.46: the server answers some playback requests with error 14; reloading usually gets through
             PanelDefaultTab: @1, // Comments - the Members tab had become the first one
             PostDownloadAction: @(PostDownloadActionKeep), // Photos only when asked for
             SBButtonKey: @YES,
