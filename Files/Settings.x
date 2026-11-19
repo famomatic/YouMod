@@ -277,6 +277,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
     // Feed
     NSArray<YMSettingsItem *> *feedItems = @[
             YMToggle(YMLOC(@"HIDE_SUBBAR"), YMLOC(@"HIDE_SUBBAR_DESC"), HideSubbar),
+            YMToggle(YMLOC(@"HIDE_COMMISSION_BADGE"), YMLOC(@"HIDE_COMMISSION_BADGE_DESC"), HideCommissionBadge),
             YMToggle(YMLOC(@"HIDE_HORI_SHELF"), YMLOC(@"HIDE_HORI_SHELF_DESC"), HideHoriShelf),
             YMToggle(YMLOC(@"HIDE_MUSIC_PLAYLISTS"), YMLOC(@"HIDE_MUSIC_PLAYLISTS_DESC"), HideGenMusicShelf),
             YMToggle(YMLOC(@"HIDE_SURVEYS"), YMLOC(@"HIDE_SURVEYS_DESC"), HideSurveys),

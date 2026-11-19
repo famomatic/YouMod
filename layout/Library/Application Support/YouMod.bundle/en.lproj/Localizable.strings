@@ -748,3 +748,5 @@
 "PANEL_HIDE_MEMBERS_TAB_DESC" = "Removes the Members tab from the comments panel. Takes effect the next time the panel opens.";
 "BLANK_AD_SIGNALS" = "Blank ad signals in requests";
 "BLANK_AD_SIGNALS_DESC" = "Empties the ad/integrity signals YouTube sends with its requests. Since the server started checking them this can make playback fail with \"Something went wrong\" (error 14). Leave off unless it works for you. Restart the app after changing.";
+"HIDE_COMMISSION_BADGE" = "Hide \"Earns commission\" badge";
+"HIDE_COMMISSION_BADGE_DESC" = "Removes the \"Earns commission\" label from feed thumbnails. Restart the app after changing.";

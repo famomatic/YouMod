@@ -102,30 +102,40 @@ static void YMNoteSeek(id player, double time) {
 %hook YTMainAppVideoPlayerOverlayViewController
 - (void)handleError:(NSError *)error {
     YMRecordPlaybackError(error, self);
-    // At most 3 automatic reloads a minute, so a video the server keeps refusing ends on the error screen
-    static NSMutableArray<NSDate *> *reloads;
-    BOOL reloadOK = NO;
+    // Retry with growing pauses (1.5 s, 4 s, 8 s, 15 s, 30 s) instead of reloading again at once: the server's answer is
+    // "try again later" and reloading every 2 seconds only kept it failing. After the fifth try, or when the user has
+    // left the video, the error screen is left alone. The count starts over after 40 quiet seconds.
+    static BOOL reloadPending = NO;
+    static NSInteger retries = 0;
+    static NSDate *lastRetry = nil;
     if (IS_ENABLED(FixPlaybackIssues) && error && [error.domain isEqualToString:@"com.google.ios.youtube.ErrorDomain.playback"] && error.code == 14) {
-        if (!reloads) reloads = [NSMutableArray array];
-        NSDate *now = [NSDate date];
-        for (NSInteger i = (NSInteger)reloads.count - 1; i >= 0; i--) if ([now timeIntervalSinceDate:reloads[i]] > 60) [reloads removeObjectAtIndex:i];
-        if (reloads.count < 3) { [reloads addObject:now]; reloadOK = YES; }
-    }
-    if (reloadOK) {
         YTPlayerViewController *playerViewController = self.parentViewController;
         if (![playerViewController.UIDelegate isKindOfClass:%c(YTWatchController)]) return;
-        YTWatchController *watchController = (YTWatchController *)playerViewController.UIDelegate;
-        NSString *vid = YMCurrentVideoID(playerViewController);
-        double at = (vid && [vid isEqualToString:gYMLastVideoID] && gYMLastTime > 1) ? gYMLastTime : YMCurrentMediaTime(playerViewController);
-        gYMResumeVideoID = [vid copy];
-        gYMResumeTime = at > 1 ? at : 0;
-        gYMResumeUntil = gYMResumeTime > 0 ? [NSDate dateWithTimeIntervalSinceNow:25] : [NSDate dateWithTimeIntervalSinceNow:8];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            // start playing right away (reload alone follows "Disable autoplay" and stays paused)
-            if ([watchController respondsToSelector:@selector(reloadStartPlayback:)]) ((void (*)(id, SEL, BOOL))objc_msgSend)(watchController, @selector(reloadStartPlayback:), YES);
-            else [watchController reload];
-        });
-        return;
+        if (reloadPending) return; // one retry is already on its way; the player reports the same failure several times
+        NSDate *now = [NSDate date];
+        if (lastRetry && [now timeIntervalSinceDate:lastRetry] > 40) retries = 0;
+        static const double delays[] = {1.5, 4, 8, 15, 30};
+        if (retries < 5) {
+            YTWatchController *watchController = (YTWatchController *)playerViewController.UIDelegate;
+            NSString *vid = YMCurrentVideoID(playerViewController);
+            double at = (vid && [vid isEqualToString:gYMLastVideoID] && gYMLastTime > 1) ? gYMLastTime : YMCurrentMediaTime(playerViewController);
+            double resumeAt = at > 1 ? at : 0;
+            double delay = delays[retries];
+            retries++;
+            lastRetry = now;
+            reloadPending = YES;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                reloadPending = NO;
+                if (vid && ![YMCurrentVideoID(playerViewController) isEqualToString:vid]) return; // the user moved on
+                gYMResumeVideoID = [vid copy];
+                gYMResumeTime = resumeAt;
+                gYMResumeUntil = [NSDate dateWithTimeIntervalSinceNow:resumeAt > 0 ? 25 : 8];
+                // start playing right away (reload alone follows "Disable autoplay" and stays paused)
+                if ([watchController respondsToSelector:@selector(reloadStartPlayback:)]) ((void (*)(id, SEL, BOOL))objc_msgSend)(watchController, @selector(reloadStartPlayback:), YES);
+                else [watchController reload];
+            });
+            return;
+        }
     }
     %orig;
 }
