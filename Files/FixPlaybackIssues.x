@@ -99,6 +99,37 @@ static void YMNoteSeek(id player, double time) {
 }
 %end
 
+// Heartbeats: while a video plays YouTube sends periodic heartbeat requests, and when the server answers one with a
+// playability error the client halts playback (-[YTPlaybackHeartbeatController haltPlaybackWithError:...]). Since
+// 2026-11-18 that answer arrives a couple of seconds after every (re)load, which is what the "Something went wrong"
+// bursts look like: the stream itself is fine, the halt is what stops it. With the setting on the halt is ignored.
+// Either way the halt is written to the error log shown in the UI dump.
+static void YMRecordNote(NSString *note) {
+    @synchronized ([NSNull null]) {
+        if (!gYMPlaybackErrors) gYMPlaybackErrors = [NSMutableArray array];
+        [gYMPlaybackErrors addObject:[NSString stringWithFormat:@"%@ %@", [NSDate date], note]];
+        if (gYMPlaybackErrors.count > 30) [gYMPlaybackErrors removeObjectAtIndex:0];
+    }
+}
+
+%hook YTPlaybackHeartbeatController
+- (void)haltPlaybackWithError:(id)error forHeartbeatController:(id)heartbeatController {
+    NSString *desc = [[NSString stringWithFormat:@"%@", error] stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
+    if (desc.length > 400) desc = [[desc substringToIndex:400] stringByAppendingString:@"…"];
+    BOOL ignore = IS_ENABLED(IgnoreHeartbeatErrors);
+    YMRecordNote([NSString stringWithFormat:@"HEARTBEAT halt (%@): %@", ignore ? @"ignored" : @"applied", desc]);
+    if (ignore) return;
+    %orig;
+}
+%end
+
+%hook YTSingleVideoHeartbeatController
+- (void)handleError:(id)error forRequest:(id)request {
+    YMRecordNote([NSString stringWithFormat:@"HEARTBEAT request failed: %@", error]);
+    %orig;
+}
+%end
+
 %hook YTMainAppVideoPlayerOverlayViewController
 - (void)handleError:(NSError *)error {
     YMRecordPlaybackError(error, self);

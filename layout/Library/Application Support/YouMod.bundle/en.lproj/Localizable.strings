@@ -750,3 +750,5 @@
 "BLANK_AD_SIGNALS_DESC" = "Empties the ad/integrity signals YouTube sends with its requests. Since the server started checking them this can make playback fail with \"Something went wrong\" (error 14). Leave off unless it works for you. Restart the app after changing.";
 "HIDE_COMMISSION_BADGE" = "Hide \"Earns commission\" badge";
 "HIDE_COMMISSION_BADGE_DESC" = "Removes the \"Earns commission\" label from feed thumbnails. Restart the app after changing.";
+"IGNORE_HEARTBEAT_ERRORS" = "Ignore heartbeat playback errors";
+"IGNORE_HEARTBEAT_ERRORS_DESC" = "Keeps playing when YouTube's periodic heartbeat check answers with an error and would stop the video (\"Something went wrong\"). Turn off if a video that should stop keeps playing.";

@@ -356,6 +356,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             YMToggle(YMLOC(@"HIDE_COMMENTS_PREVIEW"), YMLOC(@"HIDE_COMMENTS_PREVIEW_DESC"), HideCommentsPreview),
             YMPicker(YMLOC(@"PANEL_DEFAULT_TAB"), YMLOC(@"PANEL_DEFAULT_TAB_DESC"), PanelDefaultTab, (@[YMLOC(@"DEFAULT"), YMLOC(@"PANEL_TAB_COMMENTS"), YMLOC(@"PANEL_TAB_MEMBERS")]), 1),
             YMToggle(YMLOC(@"PANEL_HIDE_MEMBERS_TAB"), YMLOC(@"PANEL_HIDE_MEMBERS_TAB_DESC"), PanelHideMembersTab),
+            YMToggle(YMLOC(@"IGNORE_HEARTBEAT_ERRORS"), YMLOC(@"IGNORE_HEARTBEAT_ERRORS_DESC"), IgnoreHeartbeatErrors),
             YMToggle(YMLOC(@"BLANK_AD_SIGNALS"), YMLOC(@"BLANK_AD_SIGNALS_DESC"), BlankAdSignals),
             YMPicker(YMLOC(@"DRC_AUDIO_OPTIONS"), YMLOC(@"DRC_AUDIO_OPTIONS_DESC"), AutoDRCAudioIndex, (@[YMLOC(@"DEFAULT"), YMLOC(@"ENABLED"), YMLOC(@"DISABLED")]), 0),
             YMToggle(YMLOC(@"REMOVE_VIDEO_LIKE_BUTTON"), YMLOC(@"REMOVE_VIDEO_LIKE_BUTTON_DESC"), RemoveVideoLikeButton),
@@ -737,6 +738,7 @@ void YMRegisterDefaults(void) {
             DownloadEmbedMetadata: @YES,
             NoPauseOnFullscreenPanel: @YES,
             PostOriginalAspect: @YES,
+            IgnoreHeartbeatErrors: @YES, // 21.46: the server answers heartbeats with an error a few seconds after each load
             FixPlaybackIssues: @YES, // 21.46: the server answers some playback requests with error 14; reloading usually gets through
             PanelDefaultTab: @1, // Comments - the Members tab had become the first one
             PostDownloadAction: @(PostDownloadActionKeep), // Photos only when asked for

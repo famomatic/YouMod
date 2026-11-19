@@ -271,6 +271,7 @@ extern void YMRegisterDefaults(void);
 #define HomeTabHideMore @"YouModHomeTabHideMore"
 #define HomeTabHideOthers @"YouModHomeTabHideOthers"
 // Comments panel tabs under the player (Comments / Members)
+#define IgnoreHeartbeatErrors @"YouModIgnoreHeartbeatErrors" // ignore playback halts requested by heartbeat responses (default on)
 #define HideCommissionBadge @"YouModHideCommissionBadge" // hide the "Earns commission" pill on feed thumbnails
 #define BlankAdSignals @"YouModBlankAdSignals" // blank the ad/integrity signals of YouTube's requests (default off: playback error 14)
 #define PanelHideMembersTab @"YouModPanelHideMembersTab"
