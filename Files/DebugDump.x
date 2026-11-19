@@ -1,6 +1,7 @@
 #import "Headers.h"
 #import <objc/runtime.h>
 #import <sys/utsname.h>
+#import <mach-o/dyld.h>
 
 // UI dump: writes the whole live view hierarchy (class, frame, accessibilityIdentifier/Label, ASDK node class)
 // plus a summary of every accessibility identifier to a text file and offers it through the share sheet.
@@ -8,6 +9,7 @@
 
 extern NSString *YMPlaybackErrorLog(void);
 extern NSString *YMPanelTabsLog(void);
+extern NSString *YMCardFillLog(void);
 
 static const NSUInteger kYMDumpMaxLines = 60000;
 
@@ -105,6 +107,22 @@ static NSString *YMBuildDump(void) {
 
     [out appendString:@"\n=== COMMENTS PANEL TABS ===\n"];
     [out appendFormat:@"%@\n", YMPanelTabsLog()];
+
+    [out appendString:@"\n=== FEED CARD FILLS ===\n"];
+    [out appendFormat:@"%@\n", YMCardFillLog()];
+
+    // Other tweaks injected into the app (their dylibs/frameworks) and the YouMod settings in effect
+    [out appendString:@"\n=== LOADED TWEAKS ===\n"];
+    for (uint32_t i = 0; i < _dyld_image_count(); i++) {
+        const char *name = _dyld_get_image_name(i);
+        if (!name || strstr(name, "/System/") || strstr(name, "/usr/lib/") || strstr(name, "/Developer/")) continue;
+        if (strstr(name, "/Frameworks/") || strstr(name, ".dylib") || strstr(name, "/Library/")) [out appendFormat:@"%s\n", name];
+    }
+    [out appendString:@"\n=== YOUMOD SETTINGS ===\n"];
+    NSDictionary *all = [NSUserDefaults standardUserDefaults].dictionaryRepresentation;
+    for (NSString *key in [all.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+        if ([key hasPrefix:@"YouMod"]) [out appendFormat:@"%@ = %@\n", key, YMOneLine([NSString stringWithFormat:@"%@", all[key]])];
+    }
 
     NSMutableString *tree = [NSMutableString string];
     NSMutableDictionary<NSString *, NSMutableDictionary *> *ids = [NSMutableDictionary dictionary];

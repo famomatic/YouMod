@@ -119,26 +119,45 @@ static BOOL YMViewHasDescendantWithID(UIView *view, NSString *ident, int depth) 
     return NO;
 }
 
-static void YMCarouselShowComments(UIScrollView *cv, int tries) {
-    if (!cv.window || objc_getAssociatedObject(cv, kYMCarouselDoneKey)) return;
-    UIView *target = nil;
+static UIView *YMCarouselCommentsCell(UIScrollView *cv) {
     for (UIView *cell in cv.subviews) {
         if (![NSStringFromClass(cell.class) containsString:@"CollectionViewCell"]) continue;
-        if (YMViewHasDescendantWithID(cell, @"id.ui.comments_entry_point_teaser", 14)) { target = cell; break; }
+        if (YMViewHasDescendantWithID(cell, @"id.ui.comments_entry_point_teaser", 14)) return cell;
     }
-    if (!target) {
-        if (tries < 10) {
-            __weak UIScrollView *weakCV = cv;
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                UIScrollView *strong = weakCV;
-                if (strong) YMCarouselShowComments(strong, tries + 1);
-            });
-        }
+    return nil;
+}
+
+// Only the cells near the visible page exist, so the comments card is often not there yet. Page through the
+// carousel (no animation, one page per 0.25 s) until a cell with the comments teaser shows up, then stay on it;
+// if no page has one, go back to the first page.
+static void YMCarouselShowComments(UIScrollView *cv, int step) {
+    if (!cv.window || objc_getAssociatedObject(cv, kYMCarouselDoneKey)) return;
+    CGFloat page = cv.bounds.size.width;
+    NSInteger pages = page > 1 ? (NSInteger)lround(cv.contentSize.width / page) : 0;
+
+    UIView *target = YMCarouselCommentsCell(cv);
+    if (target) {
+        objc_setAssociatedObject(cv, kYMCarouselDoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        CGFloat x = target.frame.origin.x;
+        if (fabs(cv.contentOffset.x - x) > 0.5) [cv setContentOffset:CGPointMake(x, cv.contentOffset.y) animated:NO];
         return;
     }
-    objc_setAssociatedObject(cv, kYMCarouselDoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    CGFloat x = target.frame.origin.x;
-    if (x > 0.5 && fabs(cv.contentOffset.x - x) > 0.5) [cv setContentOffset:CGPointMake(x, cv.contentOffset.y) animated:NO];
+    BOOL gaveUp = step >= 14 || (pages > 0 && step > pages + 2);
+    if (gaveUp) {
+        objc_setAssociatedObject(cv, kYMCarouselDoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (cv.contentOffset.x > 0.5) [cv setContentOffset:CGPointMake(0, cv.contentOffset.y) animated:NO];
+        return;
+    }
+    // step 0-1: wait for the first layout; then move to page 1, 2, ...
+    if (pages > 1 && step >= 1) {
+        NSInteger index = MIN((NSInteger)step, pages - 1);
+        [cv setContentOffset:CGPointMake(index * page, cv.contentOffset.y) animated:NO];
+    }
+    __weak UIScrollView *weakCV = cv;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UIScrollView *strong = weakCV;
+        if (strong) YMCarouselShowComments(strong, step + 1);
+    });
 }
 
 %hook ASCollectionView

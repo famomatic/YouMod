@@ -100,7 +100,15 @@ static BOOL YMAppIsDark(void);
 static BOOL YMIsNeutral(CGFloat r, CGFloat g, CGFloat b) { return MAX(r, MAX(g, b)) - MIN(r, MIN(g, b)) < 0.08; }
 
 // An opaque dark grey, or a faint translucent white that reads as dark grey over black
+static UIColor *YMDarkResolved(UIColor *c) {
+    if (![c isKindOfClass:[UIColor class]]) return c;
+    // Texture draws on background threads, where the current trait collection is not the app's: resolve dynamic
+    // colours for dark mode explicitly
+    return [c resolvedColorWithTraitCollection:[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleDark]];
+}
+
 static BOOL YMIsGreyCardFill(UIColor *c) {
+    c = YMDarkResolved(c);
     if (![c isKindOfClass:[UIColor class]]) return NO;
     CGFloat r = 0, g = 0, b = 0, a = 0, w = 0;
     if ([c getRed:&r green:&g blue:&b alpha:&a]) {
@@ -113,18 +121,59 @@ static BOOL YMIsGreyCardFill(UIColor *c) {
     return a > 0.01 && a < 0.35 && lo > 0.7;
 }
 
-static BOOL YMNodeIsVideoCardRoot(id node) {
-    id parent = [node respondsToSelector:@selector(supernode)] ? [node valueForKey:@"supernode"] : nil;
-    return parent && [parent isKindOfClass:%c(YTVideoWithContextNode)];
+// How far below a feed video card node (YTVideoWithContextNode) this node sits: 1 = direct child, 0 = not in a card.
+// The grey is drawn on the full-width containers under the card's root (the metadata area), not on the root itself.
+static NSInteger YMNodeCardDepth(id node) {
+    id cur = node;
+    for (NSInteger depth = 1; depth <= 5; depth++) {
+        if (![cur respondsToSelector:@selector(supernode)]) return 0;
+        cur = ((id (*)(id, SEL))objc_msgSend)(cur, @selector(supernode));
+        if (!cur) return 0;
+        if ([cur isKindOfClass:%c(YTVideoWithContextNode)]) return depth;
+    }
+    return 0;
+}
+
+static CGFloat YMNodeWidth(id node) {
+    id v = nil;
+    @try { v = [node valueForKey:@"bounds"]; } @catch (__unused NSException *e) {}
+    return [v isKindOfClass:[NSValue class]] ? [(NSValue *)v CGRectValue].size.width : 0;
+}
+
+// What the card nodes were filled with, for the UI dump (the colour was guessed before this existed)
+static NSMutableArray<NSString *> *gYMCardFills;
+NSString *YMCardFillLog(void) {
+    @synchronized ([NSNull null]) {
+        return gYMCardFills.count ? [gYMCardFills componentsJoinedByString:@"\n"] : @"(no card fills seen)";
+    }
+}
+static void YMNoteCardFill(NSString *how, id node, NSInteger depth, UIColor *c, BOOL changed) {
+    CGFloat r = 0, g = 0, b = 0, a = 0;
+    UIColor *dark = YMDarkResolved(c);
+    NSString *col = [dark isKindOfClass:[UIColor class]] && [dark getRed:&r green:&g blue:&b alpha:&a]
+        ? [NSString stringWithFormat:@"#%02X%02X%02X a=%.2f", (int)lroundf(r * 255), (int)lroundf(g * 255), (int)lroundf(b * 255), a] : [NSString stringWithFormat:@"%@", c];
+    NSString *line = [NSString stringWithFormat:@"%@ depth=%ld w=%.0f %@ %@", how, (long)depth, YMNodeWidth(node), col, changed ? @"-> black" : @"(kept)"];
+    @synchronized ([NSNull null]) {
+        if (!gYMCardFills) gYMCardFills = [NSMutableArray array];
+        if (![gYMCardFills containsObject:line] && gYMCardFills.count < 30) [gYMCardFills addObject:line];
+    }
+}
+
+static BOOL YMShouldBlackenCardFill(id node, UIColor *c, NSString *how) {
+    NSInteger depth = YMNodeCardDepth(node);
+    if (depth == 0 || depth > 4 || !c) return NO;
+    BOOL change = YMAppIsDark() && YMNodeWidth(node) >= 300 && YMIsGreyCardFill(c);
+    YMNoteCardFill(how, node, depth, c, change);
+    return change;
 }
 
 %hook ELMContainerNode
 - (void)setBackgroundColor:(UIColor *)color {
-    if (YMAppIsDark() && YMIsGreyCardFill(color) && YMNodeIsVideoCardRoot((id)self)) color = [UIColor blackColor];
+    if (YMShouldBlackenCardFill((id)self, color, @"bg")) color = [UIColor blackColor];
     %orig(color);
 }
 - (id)resizableRoundedImageWithCornerRadius:(CGFloat)radius fillColor:(UIColor *)fill borderColor:(UIColor *)border borderWidth:(CGFloat)width isBoosted:(BOOL *)boosted {
-    if (YMAppIsDark() && YMIsGreyCardFill(fill) && YMNodeIsVideoCardRoot((id)self)) fill = [UIColor blackColor];
+    if (YMShouldBlackenCardFill((id)self, fill, @"roundedFill")) fill = [UIColor blackColor];
     return %orig(radius, fill, border, width, boosted);
 }
 %end
