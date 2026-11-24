@@ -74,6 +74,11 @@ func ytClient() *client.Client {
 			DownloadTransport: client.DownloadTransportConfig{
 				MaxRetries:     5,
 				InitialBackoff: time.Second,
+				// ytv1 turns chunked (Range, 10 MiB) downloads on only while ChunkSize, MaxConcurrency and
+				// EnableChunked are all left at zero. Setting MaxConcurrency alone switched them off, and a
+				// single un-ranged GET of the whole stream is what googlevideo answers with 403.
+				EnableChunked:  true,
+				ChunkSize:      10 << 20,
 				MaxConcurrency: 4,
 			},
 			MetadataTransport: client.MetadataTransportConfig{

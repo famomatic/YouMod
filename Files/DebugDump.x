@@ -95,7 +95,8 @@ static NSString *YMBuildDump(void) {
                          @"YTReelAccessoryView", @"YTReelTopBarView", @"YTReelPausedStateCarouselView", @"YTReelPlayerPivotButton",
                          @"YTReelWatchPlaybackOverlayView", @"YTReelContentView", @"YTMainAppControlsOverlayView",
                          @"YTInlinePlayerBarContainerView", @"YTWatchFloatingMiniplayerControlsBarView", @"YTWatchFloatingMiniplayerProgressBarView",
-                         @"YTAdsInnerTubeContextDecorator", @"YTAdsInnerTubeContextDecoratorImpl"];
+                         @"YTAdsInnerTubeContextDecorator", @"YTAdsInnerTubeContextDecoratorImpl",
+                         @"YTPlaybackHeartbeatController", @"YTSingleVideoHeartbeatController", @"YTVideoWithContextNode", @"ELMContainerNode"];
     [out appendString:@"\n=== CLASS PRESENCE ===\n"];
     for (NSString *c in classes) {
         Class k = NSClassFromString(c);
