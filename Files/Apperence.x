@@ -173,7 +173,14 @@ static BOOL YMShouldBlackenCardFill(id node, UIColor *c, NSString *how) {
     %orig(color);
 }
 - (id)resizableRoundedImageWithCornerRadius:(CGFloat)radius fillColor:(UIColor *)fill borderColor:(UIColor *)border borderWidth:(CGFloat)width isBoosted:(BOOL *)boosted {
-    if (YMShouldBlackenCardFill((id)self, fill, @"roundedFill")) fill = [UIColor blackColor];
+    if (YMShouldBlackenCardFill((id)self, fill, @"roundedFill")) {
+        fill = [UIColor blackColor];
+        // 21.46 dump: both grey fills (the opaque #212121 one and the translucent white one on its child) were
+        // replaced by black and the grey was still on screen, so the picture is not what the node ends up drawing.
+        // These nodes are pure background (their only child is the next background layer; the metadata is in a
+        // sibling container), and the page is black, so hide them outright instead of relying on the fill.
+        ((void (*)(id, SEL, BOOL))objc_msgSend)((id)self, @selector(setHidden:), YES);
+    }
     return %orig(radius, fill, border, width, boosted);
 }
 %end

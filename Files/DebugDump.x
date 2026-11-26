@@ -55,6 +55,10 @@ static void YMDumpView(UIView *v, int depth, NSMutableString *out, NSMutableDict
 
     id node = YMSafeValue(v, @"keepalive_node");
     if (node) [line appendFormat:@" node=%@", NSStringFromClass([node class])];
+    // what a node-backed view draws with: a grey card can be layer contents or a border rather than a background colour
+    if (node && v.layer.contents) [line appendString:@" contents"];
+    if (node && v.layer.borderWidth > 0) [line appendFormat:@" border=%.1f", v.layer.borderWidth];
+    if (node && v.layer.cornerRadius > 0) [line appendFormat:@" radius=%.0f", v.layer.cornerRadius];
 
     UIResponder *next = v.nextResponder;
     if ([next isKindOfClass:[UIViewController class]]) [line appendFormat:@" vc=%@", NSStringFromClass([next class])];
