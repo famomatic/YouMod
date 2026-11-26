@@ -15,11 +15,13 @@ typedef int64_t (*YMYTV1DownloadFn)(const char *videoID, int itag, int audio, in
 typedef void (*YMYTV1CancelFn)(int64_t handle);
 typedef char *(*YMYTV1VersionFn)(void);
 typedef void (*YMYTV1FreeFn)(char *p);
+typedef char *(*YMYTV1LogFn)(void);
 
 static YMYTV1DownloadFn ymYTV1Download;
 static YMYTV1CancelFn ymYTV1Cancel;
 static YMYTV1VersionFn ymYTV1Version;
 static YMYTV1FreeFn ymYTV1Free;
+static YMYTV1LogFn ymYTV1Log;
 static NSString *ymYTV1LoadError;
 
 static NSString *YMYTV1BinaryPath(void) {
@@ -51,6 +53,7 @@ static BOOL YMYTV1Load(void) {
         ymYTV1Cancel = (YMYTV1CancelFn)dlsym(handle, "ytv1_cancel");
         ymYTV1Version = (YMYTV1VersionFn)dlsym(handle, "ytv1_version");
         ymYTV1Free = (YMYTV1FreeFn)dlsym(handle, "ytv1_free");
+        ymYTV1Log = (YMYTV1LogFn)dlsym(handle, "ytv1_log"); // absent in older frameworks
         loaded = ymYTV1Download && ymYTV1Cancel;
         if (!loaded) ymYTV1LoadError = @"YTV1.framework is missing its exports";
     });
@@ -142,6 +145,14 @@ static NSMutableArray<NSNumber *> *ymYTV1Active;
     char *v = ymYTV1Version();
     NSString *s = v ? @(v) : nil;
     if (v && ymYTV1Free) ymYTV1Free(v);
+    return s;
+}
+
++ (NSString *)debugLog {
+    if (!YMYTV1Load() || !ymYTV1Log) return nil;
+    char *l = ymYTV1Log();
+    NSString *s = l ? @(l) : nil;
+    if (l && ymYTV1Free) ymYTV1Free(l);
     return s;
 }
 

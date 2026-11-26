@@ -26,6 +26,7 @@ import "C"
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -60,6 +61,66 @@ var (
 
 func progressKey(videoID string, itag int) string { return fmt.Sprintf("%s|%d", videoID, itag) }
 
+// Recent lifecycle lines (client attempts, download stages), returned by ytv1_log for the UI dump, and appended
+// to a failure's message: ytv1's own error text is only a summary ("download failed with detailed attempts").
+var (
+	logMu    sync.Mutex
+	logLines []string
+)
+
+func addLog(line string) {
+	logMu.Lock()
+	defer logMu.Unlock()
+	logLines = append(logLines, time.Now().Format("15:04:05")+" "+line)
+	if len(logLines) > 60 {
+		logLines = logLines[len(logLines)-60:]
+	}
+}
+
+func recentLog(n int) string {
+	logMu.Lock()
+	defer logMu.Unlock()
+	start := 0
+	if len(logLines) > n {
+		start = len(logLines) - n
+	}
+	return strings.Join(logLines[start:], "\n")
+}
+
+func attemptsText(attempts []client.AttemptDetail) string {
+	var b strings.Builder
+	for _, a := range attempts {
+		fmt.Fprintf(&b, "\n- %s/%s http=%d itag=%d proto=%s host=%s n=%t pot=%t potRequired=%t", a.Client, a.Stage, a.HTTPStatus, a.Itag, a.Protocol, a.URLHost, a.URLHasN, a.URLHasPOT, a.POTRequired)
+		if a.PlayabilityStatus != "" {
+			fmt.Fprintf(&b, " playability=%s %s", a.PlayabilityStatus, a.PlayabilityReason)
+		}
+		if a.Reason != "" {
+			fmt.Fprintf(&b, " reason=%s", a.Reason)
+		}
+	}
+	return b.String()
+}
+
+// describe turns an error into text that says what was tried, not only that it failed.
+func describe(err error) string {
+	msg := err.Error()
+	var all *client.AllClientsFailedDetailError
+	var dl *client.DownloadFailureDetailError
+	var login *client.LoginRequiredDetailError
+	switch {
+	case errors.As(err, &all):
+		msg += attemptsText(all.Attempts)
+	case errors.As(err, &dl):
+		msg += attemptsText(dl.Attempts)
+	case errors.As(err, &login):
+		msg += attemptsText(login.Attempts)
+	}
+	if tail := recentLog(8); tail != "" {
+		msg += "\n--\n" + tail
+	}
+	return msg
+}
+
 func ytClient() *client.Client {
 	initOne.Do(func() {
 		tr := http.DefaultTransport.(*http.Transport).Clone()
@@ -85,6 +146,8 @@ func ytClient() *client.Client {
 				MaxRetries:     3,
 				InitialBackoff: time.Second,
 			},
+			OnExtractionEvent: func(ev client.ExtractionEvent) { addLog(client.FormatExtractionEvent(ev)) },
+			OnDownloadEvent:   func(ev client.DownloadEvent) { addLog(client.FormatDownloadEvent(ev)) },
 			OnDownloadProgress: func(ev client.DownloadProgressEvent) {
 				key := progressKey(ev.VideoID, ev.Itag)
 				mu.Lock()
@@ -230,7 +293,7 @@ func ytv1_download(cVideoID *C.char, cItag C.int, cAudio C.int, cHeight C.int, c
 				cPath = C.CString(path)
 				cMimeOut = C.CString(gotMime)
 			} else {
-				msg := err.Error()
+				msg := describe(err)
 				if cancelled {
 					msg = "cancelled"
 				}
@@ -304,6 +367,9 @@ func ytv1_cancel(id C.int64_t) {
 
 //export ytv1_version
 func ytv1_version() *C.char { return C.CString(ytv1Commit) }
+
+//export ytv1_log
+func ytv1_log() *C.char { return C.CString(recentLog(60)) }
 
 //export ytv1_free
 func ytv1_free(p *C.char) { C.free(unsafe.Pointer(p)) }

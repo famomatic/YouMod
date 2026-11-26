@@ -919,6 +919,7 @@ typedef NS_ENUM(NSInteger, YouModTranslationState) {
 + (BOOL)available;          // the framework is installed
 + (NSString *)loadError;    // why it could not be loaded, or nil
 + (NSString *)version;      // ytv1 commit it was built from
++ (NSString *)debugLog;     // recent extraction/download lifecycle lines, or nil
 + (void)downloadVideoFormat:(YouModMediaFormat *)videoFormat audioFormat:(YouModMediaFormat *)audioFormat videoID:(NSString *)videoID
                    progress:(void (^)(float fraction, unsigned long long bytesDownloaded, BOOL isAudio))progress
                  completion:(void (^)(NSURL *videoURL, NSURL *audioURL, NSString *err))completion;

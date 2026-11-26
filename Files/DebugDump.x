@@ -119,6 +119,13 @@ static NSString *YMBuildDump(void) {
     [out appendString:@"\n=== ADS COORDINATOR / PLAYER SPOOF / LINK OPENING ===\n"];
     [out appendFormat:@"ads coordinator: %@\nplayer spoof: %@\nlinks: %@\n", YMAdsCoordinatorLog(), YMPlayerSpoofLog(), YMLinkOpenLog()];
 
+    [out appendString:@"\n=== YTV1 ===\n"];
+    if ([YMYTV1 available]) {
+        [out appendFormat:@"version: %@\nload error: %@\n%@\n", [YMYTV1 version] ?: @"?", [YMYTV1 loadError] ?: @"none", YMOneLine([YMYTV1 debugLog] ?: @"(no log)").length ? [YMYTV1 debugLog] : @"(no log)"];
+    } else {
+        [out appendString:@"YTV1.framework not found\n"];
+    }
+
     [out appendString:@"\n=== FEED CARD FILLS ===\n"];
     [out appendFormat:@"%@\n", YMCardFillLog()];
 
