@@ -10,6 +10,9 @@
 extern NSString *YMPlaybackErrorLog(void);
 extern NSString *YMPanelTabsLog(void);
 extern NSString *YMCardFillLog(void);
+extern NSString *YMAdsCoordinatorLog(void);
+extern NSString *YMPlayerSpoofLog(void);
+extern NSString *YMLinkOpenLog(void);
 
 static const NSUInteger kYMDumpMaxLines = 60000;
 
@@ -100,7 +103,7 @@ static NSString *YMBuildDump(void) {
                          @"YTReelWatchPlaybackOverlayView", @"YTReelContentView", @"YTMainAppControlsOverlayView",
                          @"YTInlinePlayerBarContainerView", @"YTWatchFloatingMiniplayerControlsBarView", @"YTWatchFloatingMiniplayerProgressBarView",
                          @"YTAdsInnerTubeContextDecorator", @"YTAdsInnerTubeContextDecoratorImpl",
-                         @"YTPlaybackHeartbeatController", @"YTSingleVideoHeartbeatController", @"YTVideoWithContextNode", @"ELMContainerNode"];
+                         @"YTNoOpAdsPlaybackCoordinator", @"YTPlaybackHeartbeatController", @"YTSingleVideoHeartbeatController", @"YTVideoWithContextNode", @"ELMContainerNode"];
     [out appendString:@"\n=== CLASS PRESENCE ===\n"];
     for (NSString *c in classes) {
         Class k = NSClassFromString(c);
@@ -112,6 +115,9 @@ static NSString *YMBuildDump(void) {
 
     [out appendString:@"\n=== COMMENTS PANEL TABS ===\n"];
     [out appendFormat:@"%@\n", YMPanelTabsLog()];
+
+    [out appendString:@"\n=== ADS COORDINATOR / PLAYER SPOOF / LINK OPENING ===\n"];
+    [out appendFormat:@"ads coordinator: %@\nplayer spoof: %@\nlinks: %@\n", YMAdsCoordinatorLog(), YMPlayerSpoofLog(), YMLinkOpenLog()];
 
     [out appendString:@"\n=== FEED CARD FILLS ===\n"];
     [out appendFormat:@"%@\n", YMCardFillLog()];

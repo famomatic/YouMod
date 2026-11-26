@@ -273,6 +273,8 @@ extern void YMRegisterDefaults(void);
 // Comments panel tabs under the player (Comments / Members)
 #define IgnoreHeartbeatErrors @"YouModIgnoreHeartbeatErrors" // ignore playback halts requested by heartbeat responses (default on)
 #define HideCommissionBadge @"YouModHideCommissionBadge" // hide the "Earns commission" pill on feed thumbnails
+#define OpenLinksInSafari @"YouModOpenLinksInSafari" // links never go to Chrome / the Google app (default on)
+#define SpoofPlayerClient @"YouModSpoofPlayerClient" // send /player requests as the TV client (default off)
 #define BlankAdSignals @"YouModBlankAdSignals" // blank the ad/integrity signals of YouTube's requests (default off: playback error 14)
 #define PanelHideMembersTab @"YouModPanelHideMembersTab"
 #define PanelDefaultTab @"YouModPanelDefaultTab" // 0 = YouTube decides, 1 = Comments, 2 = Members

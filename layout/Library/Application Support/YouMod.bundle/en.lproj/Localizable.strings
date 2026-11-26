@@ -752,3 +752,7 @@
 "HIDE_COMMISSION_BADGE_DESC" = "Removes the \"Earns commission\" label from feed thumbnails. Restart the app after changing.";
 "IGNORE_HEARTBEAT_ERRORS" = "Ignore heartbeat playback errors";
 "IGNORE_HEARTBEAT_ERRORS_DESC" = "Keeps playing when YouTube's periodic heartbeat check answers with an error and would stop the video (\"Something went wrong\"). Turn off if a video that should stop keeps playing.";
+"OPEN_LINKS_IN_SAFARI" = "Open links in Safari";
+"OPEN_LINKS_IN_SAFARI_DESC" = "Links never open in Chrome or the Google app; they use Safari (the default browser). Restart the app after changing.";
+"SPOOF_PLAYER_CLIENT" = "Play as TV client (experimental)";
+"SPOOF_PLAYER_CLIENT_DESC" = "Sends playback requests as the TV client to get around \"Something went wrong\" (error 14). Watch history, downloads and signed-in features may behave differently. Restart the app after changing.";

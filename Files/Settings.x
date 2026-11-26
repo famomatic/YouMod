@@ -358,6 +358,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             YMToggle(YMLOC(@"PANEL_HIDE_MEMBERS_TAB"), YMLOC(@"PANEL_HIDE_MEMBERS_TAB_DESC"), PanelHideMembersTab),
             YMToggle(YMLOC(@"IGNORE_HEARTBEAT_ERRORS"), YMLOC(@"IGNORE_HEARTBEAT_ERRORS_DESC"), IgnoreHeartbeatErrors),
             YMToggle(YMLOC(@"BLANK_AD_SIGNALS"), YMLOC(@"BLANK_AD_SIGNALS_DESC"), BlankAdSignals),
+            YMToggle(YMLOC(@"SPOOF_PLAYER_CLIENT"), YMLOC(@"SPOOF_PLAYER_CLIENT_DESC"), SpoofPlayerClient),
             YMPicker(YMLOC(@"DRC_AUDIO_OPTIONS"), YMLOC(@"DRC_AUDIO_OPTIONS_DESC"), AutoDRCAudioIndex, (@[YMLOC(@"DEFAULT"), YMLOC(@"ENABLED"), YMLOC(@"DISABLED")]), 0),
             YMToggle(YMLOC(@"REMOVE_VIDEO_LIKE_BUTTON"), YMLOC(@"REMOVE_VIDEO_LIKE_BUTTON_DESC"), RemoveVideoLikeButton),
             YMToggle(YMLOC(@"REMOVE_VIDEO_DISLIKE_BUTTON"), YMLOC(@"REMOVE_VIDEO_DISLIKE_BUTTON_DESC"), RemoveVideoDislikeButton),
@@ -547,6 +548,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             YMHeader(@""),
             YMTextSegment(YMLOC(@"DEVICE_UI"), DeviceUIIndex, (@[YMLOC(@"DEFAULT"), @"iPad", @"iPhone"]), 0),
             YMToggle(YMLOC(@"AUTO_OPEN_LINK"), YMLOC(@"AUTO_OPEN_LINK_DESC"), AutoOpenLink),
+            YMToggle(YMLOC(@"OPEN_LINKS_IN_SAFARI"), YMLOC(@"OPEN_LINKS_IN_SAFARI_DESC"), OpenLinksInSafari),
             YMHeader(YMLOC(@"FLYOUT_MENU")),
             YMToggle(YMLOC(@"REMOVE_PLAY_IN_NEXT_QUEUE_OPTION"), YMLOC(@"REMOVE_PLAY_IN_NEXT_QUEUE_OPTION_DESC"), RemovePlayInNextQueueOption),
             YMToggle(YMLOC(@"REMOVE_PLAY_IN_LAST_QUEUE_OPTION"), YMLOC(@"REMOVE_PLAY_IN_LAST_QUEUE_OPTION_DESC"), RemoveAddToLastQueueOption),
@@ -738,6 +740,7 @@ void YMRegisterDefaults(void) {
             DownloadEmbedMetadata: @YES,
             NoPauseOnFullscreenPanel: @YES,
             PostOriginalAspect: @YES,
+            OpenLinksInSafari: @YES,
             IgnoreHeartbeatErrors: @YES, // 21.46: the server answers heartbeats with an error a few seconds after each load
             FixPlaybackIssues: @YES, // 21.46: the server answers some playback requests with error 14; reloading usually gets through
             PanelDefaultTab: @1, // Comments - the Members tab had become the first one

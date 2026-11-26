@@ -752,3 +752,7 @@
 "HIDE_COMMISSION_BADGE_DESC" = "피드 썸네일의 \"Earns commission\" 표시를 없앱니다. 바꾼 뒤 앱을 다시 시작하세요.";
 "IGNORE_HEARTBEAT_ERRORS" = "하트비트 재생 오류 무시";
 "IGNORE_HEARTBEAT_ERRORS_DESC" = "YouTube가 재생 중 주기적으로 보내는 하트비트 확인에서 오류가 돌아와 영상을 멈추려 할 때(\"문제가 발생했습니다\") 멈추지 않고 계속 재생합니다. 멈춰야 할 영상이 계속 재생되면 끄세요.";
+"OPEN_LINKS_IN_SAFARI" = "링크를 Safari로 열기";
+"OPEN_LINKS_IN_SAFARI_DESC" = "링크를 Chrome이나 Google 앱으로 열지 않고 Safari(기본 브라우저)로 엽니다. 바꾼 뒤 앱을 다시 시작하세요.";
+"SPOOF_PLAYER_CLIENT" = "TV 클라이언트로 재생 (실험)";
+"SPOOF_PLAYER_CLIENT_DESC" = "재생 요청을 TV 클라이언트로 보내 \"문제가 발생했습니다\"(오류 14)를 우회합니다. 시청 기록, 다운로드, 로그인 기능이 다르게 동작할 수 있습니다. 바꾼 뒤 앱을 다시 시작하세요.";

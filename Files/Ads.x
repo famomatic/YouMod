@@ -247,13 +247,28 @@ static NSMutableArray <YTIItemSectionRenderer *> *filteredArray(NSArray <YTIItem
 // left that out, and with it the watch history entry. YouTube uses the NoOp
 // coordinator itself when its player config says so (useNoOpAdsCoordinator), so
 // hand it that one - same ad-free playback, normal content bookkeeping.
+// What createAdsPlaybackCoordinator answered, for the UI dump. A playback that ends up with no coordinator at all
+// (nil) is not recorded in the watch history, so when the NoOp coordinator cannot be built (renamed class or
+// initializer in a new YouTube version) YouTube's own coordinator is kept: the ad arrays are emptied above anyway.
+static NSString *gYMAdsCoordinatorState = @"(not asked yet)";
+NSString *YMAdsCoordinatorLog(void) { return gYMAdsCoordinatorState; }
+
 %hook YTLocalPlaybackController
 - (id)createAdsPlaybackCoordinator {
     Class noOp = %c(YTNoOpAdsPlaybackCoordinator);
-    if (![noOp instancesRespondToSelector:@selector(initWithServiceRegistryScope:delegate:)]) return nil;
+    if (!noOp || ![noOp instancesRespondToSelector:@selector(initWithServiceRegistryScope:delegate:)]) {
+        gYMAdsCoordinatorState = noOp ? @"NoOp class has no initWithServiceRegistryScope:delegate: -> YouTube's own coordinator" : @"YTNoOpAdsPlaybackCoordinator missing -> YouTube's own coordinator";
+        return %orig;
+    }
     Ivar ivar = class_getInstanceVariable(object_getClass(self), "_serviceRegistryScope");
     id scope = ivar ? object_getIvar(self, ivar) : nil;
-    return ((id (*)(id, SEL, id, id))objc_msgSend)([noOp alloc], @selector(initWithServiceRegistryScope:delegate:), scope, self);
+    id coordinator = ((id (*)(id, SEL, id, id))objc_msgSend)([noOp alloc], @selector(initWithServiceRegistryScope:delegate:), scope, self);
+    if (!coordinator) {
+        gYMAdsCoordinatorState = @"NoOp coordinator init returned nil -> YouTube's own coordinator";
+        return %orig;
+    }
+    gYMAdsCoordinatorState = [NSString stringWithFormat:@"NoOp coordinator (scope %@)", scope ? @"found" : @"nil"];
+    return coordinator;
 }
 %end
 
