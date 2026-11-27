@@ -756,3 +756,5 @@
 "OPEN_LINKS_IN_SAFARI_DESC" = "링크를 Chrome이나 Google 앱으로 열지 않고 Safari(기본 브라우저)로 엽니다. 바꾼 뒤 앱을 다시 시작하세요.";
 "SPOOF_PLAYER_CLIENT" = "TV 클라이언트로 재생 (실험)";
 "SPOOF_PLAYER_CLIENT_DESC" = "재생 요청을 TV 클라이언트로 보내 \"문제가 발생했습니다\"(오류 14)를 우회합니다. 시청 기록, 다운로드, 로그인 기능이 다르게 동작할 수 있습니다. 바꾼 뒤 앱을 다시 시작하세요.";
+"NO_HYPE_SCROLL" = "좋아요 누를 때 Hype로 이동 안 함";
+"NO_HYPE_SCROLL_DESC" = "좋아요를 눌러도 플레이어 아래 카드가 저절로 Hype로 넘어가지 않습니다. 직접 넘기는 것은 그대로 됩니다.";

@@ -695,3 +695,5 @@
 "OPEN_LINKS_IN_SAFARI_DESC" = "Links never open in Chrome or the Google app; they use Safari (the default browser). Restart the app after changing.";
 "SPOOF_PLAYER_CLIENT" = "Play as TV client (experimental)";
 "SPOOF_PLAYER_CLIENT_DESC" = "Sends playback requests as the TV client to get around \"Something went wrong\" (error 14). Watch history, downloads and signed-in features may behave differently. Restart the app after changing.";
+"NO_HYPE_SCROLL" = "Don't jump to Hype on Like";
+"NO_HYPE_SCROLL_DESC" = "Pressing Like no longer slides the cards under the player over to Hype. Swiping them yourself still works.";

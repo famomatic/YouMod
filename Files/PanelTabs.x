@@ -160,7 +160,29 @@ static void YMCarouselShowComments(UIScrollView *cv, int step) {
     });
 }
 
+// Pressing Like makes YouTube slide the cards under the player to the Hype card by itself. With the option on,
+// animated moves of that carousel that the user did not make (no finger on it, not coasting) are dropped. The
+// moves made above for "first tab: Comments" are not animated, so they still go through.
+static BOOL YMBlockHypeScroll(UIScrollView *cv, BOOL animated) {
+    if (!animated || !IS_ENABLED(NoHypeScroll)) return NO;
+    if (![cv.accessibilityIdentifier isEqualToString:@"id.ui.video_metadata_carousel.collection"]) return NO;
+    if (cv.isTracking || cv.isDragging || cv.isDecelerating || cv.panGestureRecognizer.state != UIGestureRecognizerStatePossible) return NO;
+    return YES;
+}
+
 %hook ASCollectionView
+- (void)setContentOffset:(CGPoint)offset animated:(BOOL)animated {
+    if (YMBlockHypeScroll((UIScrollView *)self, animated)) return;
+    %orig;
+}
+- (void)scrollToItemAtIndexPath:(NSIndexPath *)indexPath atScrollPosition:(NSUInteger)position animated:(BOOL)animated {
+    if (YMBlockHypeScroll((UIScrollView *)self, animated)) return;
+    %orig;
+}
+- (void)scrollRectToVisible:(CGRect)rect animated:(BOOL)animated {
+    if (YMBlockHypeScroll((UIScrollView *)self, animated)) return;
+    %orig;
+}
 - (void)didMoveToWindow {
     %orig;
     if (INTFORVAL(PanelDefaultTab) != 1 || !self.window) return;

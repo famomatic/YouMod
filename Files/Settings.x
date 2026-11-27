@@ -356,6 +356,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             YMToggle(YMLOC(@"HIDE_COMMENTS_PREVIEW"), YMLOC(@"HIDE_COMMENTS_PREVIEW_DESC"), HideCommentsPreview),
             YMPicker(YMLOC(@"PANEL_DEFAULT_TAB"), YMLOC(@"PANEL_DEFAULT_TAB_DESC"), PanelDefaultTab, (@[YMLOC(@"DEFAULT"), YMLOC(@"PANEL_TAB_COMMENTS"), YMLOC(@"PANEL_TAB_MEMBERS")]), 1),
             YMToggle(YMLOC(@"PANEL_HIDE_MEMBERS_TAB"), YMLOC(@"PANEL_HIDE_MEMBERS_TAB_DESC"), PanelHideMembersTab),
+            YMToggle(YMLOC(@"NO_HYPE_SCROLL"), YMLOC(@"NO_HYPE_SCROLL_DESC"), NoHypeScroll),
             YMToggle(YMLOC(@"IGNORE_HEARTBEAT_ERRORS"), YMLOC(@"IGNORE_HEARTBEAT_ERRORS_DESC"), IgnoreHeartbeatErrors),
             YMToggle(YMLOC(@"BLANK_AD_SIGNALS"), YMLOC(@"BLANK_AD_SIGNALS_DESC"), BlankAdSignals),
             YMToggle(YMLOC(@"SPOOF_PLAYER_CLIENT"), YMLOC(@"SPOOF_PLAYER_CLIENT_DESC"), SpoofPlayerClient),
