@@ -133,39 +133,51 @@ static void YMRecordNote(NSString *note) {
 %hook YTMainAppVideoPlayerOverlayViewController
 - (void)handleError:(NSError *)error {
     YMRecordPlaybackError(error, self);
-    // Retry with growing pauses (1.5 s, 4 s, 8 s, 15 s, 30 s) instead of reloading again at once: the server's answer is
-    // "try again later" and reloading every 2 seconds only kept it failing. After the fifth try, or when the user has
-    // left the video, the error screen is left alone. The count starts over after 40 quiet seconds.
+    // Recovery for error 14. The first retry is almost immediate (0.2 s - most of the time a second request gets
+    // through, and every second spent waiting is a second of black screen), then the pauses grow (0.8, 2, 4, 8, 15,
+    // 30 s) so a server that keeps refusing is not hammered: the earlier fixed 2 s reloads only kept it failing. After
+    // the seventh try, or when the user has left the video, the error screen is left alone. The count starts over
+    // after 40 quiet seconds. Every step is written to the error log in the UI dump.
     static BOOL reloadPending = NO;
     static NSInteger retries = 0;
     static NSDate *lastRetry = nil;
     if (IS_ENABLED(FixPlaybackIssues) && error && [error.domain isEqualToString:@"com.google.ios.youtube.ErrorDomain.playback"] && error.code == 14) {
         YTPlayerViewController *playerViewController = self.parentViewController;
-        if (![playerViewController.UIDelegate isKindOfClass:%c(YTWatchController)]) return;
-        if (reloadPending) return; // one retry is already on its way; the player reports the same failure several times
-        NSDate *now = [NSDate date];
-        if (lastRetry && [now timeIntervalSinceDate:lastRetry] > 40) retries = 0;
-        static const double delays[] = {1.5, 4, 8, 15, 30};
-        if (retries < 5) {
-            YTWatchController *watchController = (YTWatchController *)playerViewController.UIDelegate;
-            NSString *vid = YMCurrentVideoID(playerViewController);
-            double at = (vid && [vid isEqualToString:gYMLastVideoID] && gYMLastTime > 1) ? gYMLastTime : YMCurrentMediaTime(playerViewController);
-            double resumeAt = at > 1 ? at : 0;
-            double delay = delays[retries];
-            retries++;
-            lastRetry = now;
-            reloadPending = YES;
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                reloadPending = NO;
-                if (vid && ![YMCurrentVideoID(playerViewController) isEqualToString:vid]) return; // the user moved on
-                gYMResumeVideoID = [vid copy];
-                gYMResumeTime = resumeAt;
-                gYMResumeUntil = [NSDate dateWithTimeIntervalSinceNow:resumeAt > 0 ? 25 : 8];
-                // start playing right away (reload alone follows "Disable autoplay" and stays paused)
-                if ([watchController respondsToSelector:@selector(reloadStartPlayback:)]) ((void (*)(id, SEL, BOOL))objc_msgSend)(watchController, @selector(reloadStartPlayback:), YES);
-                else [watchController reload];
-            });
-            return;
+        id delegate = playerViewController.UIDelegate;
+        // Whatever hosts the player (the watch page, normally) is reloaded through the same two selectors; only when it
+        // has neither is the error left to YouTube. (Returning here without calling %orig used to swallow it silently.)
+        BOOL canReload = [delegate respondsToSelector:@selector(reloadStartPlayback:)] || [delegate respondsToSelector:@selector(reload)];
+        if (!canReload) {
+            YMRecordNote([NSString stringWithFormat:@"RECOVERY skipped: %@ cannot reload", NSStringFromClass([delegate class])]);
+        } else if (reloadPending) {
+            return; // one retry is already on its way; the player reports the same failure several times
+        } else {
+            NSDate *now = [NSDate date];
+            if (lastRetry && [now timeIntervalSinceDate:lastRetry] > 40) retries = 0;
+            static const double delays[] = {0.2, 0.8, 2, 4, 8, 15, 30};
+            static const NSInteger kMaxRetries = sizeof(delays) / sizeof(delays[0]);
+            if (retries < kMaxRetries) {
+                NSString *vid = YMCurrentVideoID(playerViewController);
+                double at = (vid && [vid isEqualToString:gYMLastVideoID] && gYMLastTime > 1) ? gYMLastTime : YMCurrentMediaTime(playerViewController);
+                double resumeAt = at > 1 ? at : 0;
+                double delay = delays[retries];
+                retries++;
+                lastRetry = now;
+                reloadPending = YES;
+                YMRecordNote([NSString stringWithFormat:@"RECOVERY retry %ld/%ld in %.1fs, resume at %.0fs", (long)retries, (long)kMaxRetries, delay, resumeAt]);
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    reloadPending = NO;
+                    if (vid && ![YMCurrentVideoID(playerViewController) isEqualToString:vid]) { YMRecordNote(@"RECOVERY dropped: the user moved on"); return; }
+                    gYMResumeVideoID = [vid copy];
+                    gYMResumeTime = resumeAt;
+                    gYMResumeUntil = [NSDate dateWithTimeIntervalSinceNow:resumeAt > 0 ? 25 : 8];
+                    // start playing right away (reload alone follows "Disable autoplay" and stays paused)
+                    if ([delegate respondsToSelector:@selector(reloadStartPlayback:)]) ((void (*)(id, SEL, BOOL))objc_msgSend)(delegate, @selector(reloadStartPlayback:), YES);
+                    else ((void (*)(id, SEL))objc_msgSend)(delegate, @selector(reload));
+                });
+                return;
+            }
+            YMRecordNote(@"RECOVERY gave up: retries used up, error screen left as is");
         }
     }
     %orig;
