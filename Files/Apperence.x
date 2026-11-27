@@ -159,6 +159,22 @@ static void YMNoteCardFill(NSString *how, id node, NSInteger depth, UIColor *c, 
     }
 }
 
+// The node, or something above it up to the card, is the video's thumbnail / inline preview.
+static BOOL YMNodeIsInlinePlayerPart(id node) {
+    static Class inlineClass;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ inlineClass = NSClassFromString(@"YTInlinePlaybackPlayerNode"); });
+    id cur = node;
+    for (NSInteger depth = 0; depth <= 6 && cur; depth++) {
+        if (inlineClass && [cur isKindOfClass:inlineClass]) return YES;
+        NSString *identifier = [cur respondsToSelector:@selector(accessibilityIdentifier)] ? [cur accessibilityIdentifier] : nil;
+        if ([identifier isKindOfClass:[NSString class]] && ([identifier containsString:@"thumbnail"] || [identifier containsString:@"player"])) return YES;
+        if ([cur isKindOfClass:%c(YTVideoWithContextNode)]) return NO;
+        cur = [cur respondsToSelector:@selector(supernode)] ? ((id (*)(id, SEL))objc_msgSend)(cur, @selector(supernode)) : nil;
+    }
+    return NO;
+}
+
 static BOOL YMShouldBlackenCardFill(id node, UIColor *c, NSString *how) {
     NSInteger depth = YMNodeCardDepth(node);
     if (depth == 0 || depth > 4 || !c) return NO;
@@ -179,7 +195,9 @@ static BOOL YMShouldBlackenCardFill(id node, UIColor *c, NSString *how) {
         // replaced by black and the grey was still on screen, so the picture is not what the node ends up drawing.
         // These nodes are pure background (their only child is the next background layer; the metadata is in a
         // sibling container), and the page is black, so hide them outright instead of relying on the fill.
-        ((void (*)(id, SEL, BOOL))objc_msgSend)((id)self, @selector(setHidden:), YES);
+        // Not the thumbnail: the 21.46 dump showed every feed thumbnail (eml.thumbnail, under the inline player node,
+        // also depth 4 and full width with a translucent white fill) hidden by this, so nothing was left to see.
+        if (!YMNodeIsInlinePlayerPart((id)self)) ((void (*)(id, SEL, BOOL))objc_msgSend)((id)self, @selector(setHidden:), YES);
     }
     return %orig(radius, fill, border, width, boosted);
 }

@@ -10,8 +10,18 @@ static NSString *gYMSpoofLog = @"off";
 NSString *YMPlayerSpoofLog(void) { @synchronized ([NSNull null]) { return gYMSpoofLog; } }
 
 static NSInteger gYMSpoofedBodies = 0, gYMSpoofedMedia = 0;
+static NSMutableOrderedSet<NSString *> *gYMSpoofSeen; // "via path" of youtubei requests that passed a hook, for the dump
+static void YMSpoofSeen(NSString *via, NSURL *url) {
+    if (![url.path.lowercaseString containsString:@"youtubei"]) return;
+    @synchronized ([NSNull null]) {
+        if (!gYMSpoofSeen) gYMSpoofSeen = [NSMutableOrderedSet orderedSet];
+        if (gYMSpoofSeen.count < 12) [gYMSpoofSeen addObject:[NSString stringWithFormat:@"%@ %@", via, url.path]];
+    }
+}
 static void YMSpoofNote(void) {
-    @synchronized ([NSNull null]) { gYMSpoofLog = [NSString stringWithFormat:@"on (TVHTML5_SIMPLY): %ld /player bodies, %ld videoplayback requests rewritten", (long)gYMSpoofedBodies, (long)gYMSpoofedMedia]; }
+    @synchronized ([NSNull null]) {
+        gYMSpoofLog = [NSString stringWithFormat:@"on (TVHTML5_SIMPLY): %ld /player bodies, %ld videoplayback requests rewritten; youtubei requests seen: %@", (long)gYMSpoofedBodies, (long)gYMSpoofedMedia, gYMSpoofSeen.count ? [gYMSpoofSeen.array componentsJoinedByString:@", "] : @"none"];
+    }
 }
 
 static NSString *const kYMSpoofClientName = @"75";
@@ -63,9 +73,27 @@ static void YMSpoofApplyBody(NSMutableURLRequest *request) {
 
 static void YMSpoofHandle(NSMutableURLRequest *request) {
     if (!request.URL) return;
+    YMSpoofSeen(@"request", request.URL);
     NSString *path = request.URL.path;
     if (YMSpoofIsPlayerPath(path)) { YMSpoofApplyBody(request); YMSpoofApplyHeaders(request, YES); }
     else if (YMSpoofIsMediaPath(path)) { YMSpoofApplyHeaders(request, NO); gYMSpoofedMedia++; YMSpoofNote(); }
+}
+
+// A copy of the request with the playback rewrite applied (for tasks created straight on an NSURLSession)
+static NSURLRequest *YMSpoofedCopy(NSURLRequest *request, NSData *uploadBody, NSData **newBody) {
+    if (![request isKindOfClass:[NSURLRequest class]] || !request.URL) return request;
+    NSString *path = request.URL.path;
+    if (!YMSpoofIsPlayerPath(path) && !YMSpoofIsMediaPath(path)) { YMSpoofSeen(@"session", request.URL); return request; }
+    NSMutableURLRequest *copy = [request mutableCopy];
+    if (uploadBody && !copy.HTTPBody) {
+        copy.HTTPBody = uploadBody; // YMSpoofApplyBody works on HTTPBody
+        YMSpoofHandle(copy);
+        if (newBody) *newBody = copy.HTTPBody;
+        copy.HTTPBody = nil;
+    } else {
+        YMSpoofHandle(copy);
+    }
+    return copy;
 }
 
 @interface GTMSessionFetcher : NSObject
@@ -73,6 +101,25 @@ static void YMSpoofHandle(NSMutableURLRequest *request) {
 @end
 
 %group SpoofPlayerClient
+%hook NSURLSession
+- (id)dataTaskWithRequest:(NSURLRequest *)request {
+    return %orig(YMSpoofedCopy(request, nil, NULL));
+}
+- (id)dataTaskWithRequest:(NSURLRequest *)request completionHandler:(id)handler {
+    return %orig(YMSpoofedCopy(request, nil, NULL), handler);
+}
+- (id)uploadTaskWithRequest:(NSURLRequest *)request fromData:(NSData *)data {
+    NSData *body = nil;
+    NSURLRequest *r = YMSpoofedCopy(request, data, &body);
+    return %orig(r, body ?: data);
+}
+- (id)uploadTaskWithRequest:(NSURLRequest *)request fromData:(NSData *)data completionHandler:(id)handler {
+    NSData *body = nil;
+    NSURLRequest *r = YMSpoofedCopy(request, data, &body);
+    return %orig(r, body ?: data, handler);
+}
+%end
+
 %hook NSMutableURLRequest
 - (id)initWithURL:(NSURL *)URL cachePolicy:(unsigned long long)cachePolicy timeoutInterval:(double)timeoutInterval {
     self = %orig;

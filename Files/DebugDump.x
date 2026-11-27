@@ -142,6 +142,14 @@ static NSString *YMBuildDump(void) {
         if ([key hasPrefix:@"YouMod"]) [out appendFormat:@"%@ = %@\n", key, YMOneLine([NSString stringWithFormat:@"%@", all[key]])];
     }
 
+    // Settings of the other tweaks that change how playback is set up (YTUHD can switch server ABR off, which on a
+    // server that only offers server ABR leaves the formats without URLs: "cabr.nourl")
+    [out appendString:@"\n=== OTHER TWEAK SETTINGS ===\n"];
+    for (NSString *key in @[@"DisableServerABR", @"EnableAV1", @"AllVP9", @"Dav1dApplyGrain", @"VP9DecodeThreads", @"VP9SkipLoopFilter", @"VP9LoopFilterOptimization"]) {
+        id value = [[NSUserDefaults standardUserDefaults] objectForKey:key];
+        [out appendFormat:@"%@ = %@\n", key, value ?: @"(unset)"];
+    }
+
     NSMutableString *tree = [NSMutableString string];
     NSMutableDictionary<NSString *, NSMutableDictionary *> *ids = [NSMutableDictionary dictionary];
     NSUInteger lines = 0;
