@@ -758,3 +758,5 @@
 "SPOOF_PLAYER_CLIENT_DESC" = "Sends playback requests as the TV client to get around \"Something went wrong\" (error 14). Watch history, downloads and signed-in features may behave differently. Restart the app after changing.";
 "NO_HYPE_SCROLL" = "Don't jump to Hype on Like";
 "NO_HYPE_SCROLL_DESC" = "Pressing Like no longer slides the cards under the player over to Hype. Swiping them yourself still works.";
+"ORIGINAL_ADS_COORDINATOR" = "Use YouTube's own ads handling";
+"ORIGINAL_ADS_COORDINATOR_DESC" = "For finding out why watch history is not recorded: keeps YouTube's own ads coordinator instead of the replacement that skips ads. Ads may show again. Applies to the next video.";

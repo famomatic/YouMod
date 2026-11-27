@@ -76,7 +76,9 @@ static void YMSpoofHandle(NSMutableURLRequest *request) {
     YMSpoofSeen(@"request", request.URL);
     NSString *path = request.URL.path;
     if (YMSpoofIsPlayerPath(path)) { YMSpoofApplyBody(request); YMSpoofApplyHeaders(request, YES); }
-    else if (YMSpoofIsMediaPath(path)) { YMSpoofApplyHeaders(request, NO); gYMSpoofedMedia++; YMSpoofNote(); }
+    // Media requests only follow a /player body that was rewritten: with /player left as the iOS app (21.46 sends it
+    // along a path these hooks do not see), TV client headers on the stream requests were a mismatch.
+    else if (gYMSpoofedBodies > 0 && YMSpoofIsMediaPath(path)) { YMSpoofApplyHeaders(request, NO); gYMSpoofedMedia++; YMSpoofNote(); }
 }
 
 // A copy of the request with the playback rewrite applied (for tasks created straight on an NSURLSession)

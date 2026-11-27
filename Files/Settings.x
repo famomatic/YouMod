@@ -360,6 +360,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
             YMToggle(YMLOC(@"IGNORE_HEARTBEAT_ERRORS"), YMLOC(@"IGNORE_HEARTBEAT_ERRORS_DESC"), IgnoreHeartbeatErrors),
             YMToggle(YMLOC(@"BLANK_AD_SIGNALS"), YMLOC(@"BLANK_AD_SIGNALS_DESC"), BlankAdSignals),
             YMToggle(YMLOC(@"SPOOF_PLAYER_CLIENT"), YMLOC(@"SPOOF_PLAYER_CLIENT_DESC"), SpoofPlayerClient),
+            YMToggle(YMLOC(@"ORIGINAL_ADS_COORDINATOR"), YMLOC(@"ORIGINAL_ADS_COORDINATOR_DESC"), OriginalAdsCoordinator),
             YMPicker(YMLOC(@"DRC_AUDIO_OPTIONS"), YMLOC(@"DRC_AUDIO_OPTIONS_DESC"), AutoDRCAudioIndex, (@[YMLOC(@"DEFAULT"), YMLOC(@"ENABLED"), YMLOC(@"DISABLED")]), 0),
             YMToggle(YMLOC(@"REMOVE_VIDEO_LIKE_BUTTON"), YMLOC(@"REMOVE_VIDEO_LIKE_BUTTON_DESC"), RemoveVideoLikeButton),
             YMToggle(YMLOC(@"REMOVE_VIDEO_DISLIKE_BUTTON"), YMLOC(@"REMOVE_VIDEO_DISLIKE_BUTTON_DESC"), RemoveVideoDislikeButton),

@@ -13,6 +13,7 @@ extern NSString *YMCardFillLog(void);
 extern NSString *YMAdsCoordinatorLog(void);
 extern NSString *YMPlayerSpoofLog(void);
 extern NSString *YMLinkOpenLog(void);
+extern NSString *YMNetLog(void);
 
 static const NSUInteger kYMDumpMaxLines = 60000;
 
@@ -124,6 +125,26 @@ static NSString *YMBuildDump(void) {
         [out appendFormat:@"version: %@\nload error: %@\n%@\n", [YMYTV1 version] ?: @"?", [YMYTV1 loadError] ?: @"none", YMOneLine([YMYTV1 debugLog] ?: @"(no log)").length ? [YMYTV1 debugLog] : @"(no log)"];
     } else {
         [out appendString:@"YTV1.framework not found\n"];
+    }
+
+    [out appendString:@"\n=== YOUTUBE REQUESTS (newest last) ===\n"];
+    [out appendFormat:@"%@\n", YMNetLog()];
+
+    // The heartbeat controllers' error-related methods, as this YouTube version names them (the halt hook is written
+    // for one selector; if it never fires, the real name is here)
+    [out appendString:@"\n=== HEARTBEAT METHODS ===\n"];
+    for (NSString *cn in @[@"YTPlaybackHeartbeatController", @"YTSingleVideoHeartbeatController"]) {
+        Class k = NSClassFromString(cn);
+        NSMutableArray *names = [NSMutableArray array];
+        unsigned int n = 0;
+        Method *ms = k ? class_copyMethodList(k, &n) : NULL;
+        for (unsigned int i = 0; i < n; i++) {
+            NSString *name = NSStringFromSelector(method_getName(ms[i]));
+            NSString *l = name.lowercaseString;
+            if ([l containsString:@"error"] || [l containsString:@"halt"] || [l containsString:@"fail"] || [l containsString:@"playability"] || [l containsString:@"response"]) [names addObject:name];
+        }
+        free(ms);
+        [out appendFormat:@"%@ (%u methods): %@\n", cn, n, names.count ? [names componentsJoinedByString:@", "] : @"-"];
     }
 
     [out appendString:@"\n=== FEED CARD FILLS ===\n"];

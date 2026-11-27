@@ -255,6 +255,10 @@ NSString *YMAdsCoordinatorLog(void) { return gYMAdsCoordinatorState; }
 
 %hook YTLocalPlaybackController
 - (id)createAdsPlaybackCoordinator {
+    if (IS_ENABLED(OriginalAdsCoordinator)) {
+        gYMAdsCoordinatorState = @"YouTube's own coordinator (option on)";
+        return %orig;
+    }
     Class noOp = %c(YTNoOpAdsPlaybackCoordinator);
     if (!noOp || ![noOp instancesRespondToSelector:@selector(initWithServiceRegistryScope:delegate:)]) {
         gYMAdsCoordinatorState = noOp ? @"NoOp class has no initWithServiceRegistryScope:delegate: -> YouTube's own coordinator" : @"YTNoOpAdsPlaybackCoordinator missing -> YouTube's own coordinator";
